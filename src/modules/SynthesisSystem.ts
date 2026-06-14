@@ -230,6 +230,7 @@ export class SynthesisSystem {
     centerY: number, 
     onComplete: () => void
   ): void {
+    const camera = this.scene.cameras.main;
     const magicCircle = this.createMagicCircle(centerX, centerY, 0xa8e6cf);
     const inputPetals = this.createInputPetals(recipe, centerX, centerY);
 
@@ -280,6 +281,7 @@ export class SynthesisSystem {
     centerY: number, 
     onComplete: () => void
   ): void {
+    const camera = this.scene.cameras.main;
     const magicCircle = this.createMagicCircle(centerX, centerY, 0xffaa00);
     const inputPetals = this.createInputPetals(recipe, centerX, centerY);
     
@@ -350,6 +352,7 @@ export class SynthesisSystem {
     centerY: number, 
     onComplete: () => void
   ): void {
+    const camera = this.scene.cameras.main;
     const magicCircle = this.createMagicCircle(centerX, centerY, 0xff6b6b);
     const inputPetals = this.createInputPetals(recipe, centerX, centerY);
 
