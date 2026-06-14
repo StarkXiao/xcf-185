@@ -5,8 +5,8 @@ import { SaveManager } from './SaveManager';
 export class AudioManager {
   private static instance: AudioManager;
   private scene: Phaser.Scene | null = null;
-  private bgmSound: Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound | null = null;
-  private sfxCache: Map<string, Phaser.Sound.HTML5AudioSound | Phaser.Sound.WebAudioSound> = new Map();
+  private bgmSound: Phaser.Sound.BaseSound | null = null;
+  private sfxCache: Map<string, Phaser.Sound.BaseSound> = new Map();
 
   private constructor() {
     EventManager.getInstance().on('audio:play', ({ key, volume }) => {
@@ -74,7 +74,7 @@ export class AudioManager {
   public setBgmVolume(volume: number): void {
     SaveManager.getInstance().updateSettings({ bgmVolume: Math.max(0, Math.min(1, volume)) });
     if (this.bgmSound) {
-      this.bgmSound.setVolume(volume);
+      (this.bgmSound as Phaser.Sound.WebAudioSound).setVolume(volume);
     }
   }
 

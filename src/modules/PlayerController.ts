@@ -79,15 +79,28 @@ export class PlayerController {
   }
 
   private createPlayerGlow(x: number, y: number): void {
-    this.playerGlow = this.scene.add.graphics();
-    this.playerGlow.setDepth(19);
+    const glowTextureKey = 'player_glow_texture';
+    if (!this.scene.textures.exists(glowTextureKey)) {
+      const glowCanvas = this.scene.textures.createCanvas(glowTextureKey, 160, 160);
+      const glowCtx = glowCanvas.getContext();
+      const center = 80;
+      const grad = glowCtx.createRadialGradient(center, center, 0, center, center, 80);
+      grad.addColorStop(0, 'rgba(168, 230, 207, 0.3)');
+      grad.addColorStop(1, 'rgba(168, 230, 207, 0)');
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(center, center, 80, 0, Math.PI * 2);
+      glowCtx.fill();
+      glowCanvas.refresh();
+    }
+
+    this.playerGlow = this.scene.add.graphics() as unknown as Phaser.GameObjects.Graphics;
+    const glowImage = this.scene.add.image(x, y, glowTextureKey)
+      .setDepth(19)
+      .setData('isPlayerGlow', true);
     
-    const glowGradient = this.playerGlow.createRadialGradient(0, 0, 0, 0, 0, 80);
-    glowGradient.addColorStop(0, 'rgba(168, 230, 207, 0.3)');
-    glowGradient.addColorStop(1, 'rgba(168, 230, 207, 0)');
-    
-    this.playerGlow.fillGradientStyle(glowGradient);
-    this.playerGlow.fillCircle(x, y, 80);
+    (this as any)._glowImage = glowImage;
+    (this.playerGlow as any)._glowImage = glowImage;
   }
 
   private createTrailParticles(): void {
@@ -118,7 +131,7 @@ export class PlayerController {
     }
 
     this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y > this.scene.game.config.height as number * 0.7) {
+      if (pointer.y > (this.scene.game.config.height as number) * 0.7) {
         this.startJoystick(pointer);
       } else {
         this.moveTargetX = pointer.worldX;
@@ -249,10 +262,12 @@ export class PlayerController {
   }
 
   private updatePlayerGlow(): void {
-    if (!this.player || !this.playerGlow) return;
-
-    this.playerGlow.x = this.player.x;
-    this.playerGlow.y = this.player.y;
+    if (!this.player) return;
+    const glowImage = (this as any)._glowImage;
+    if (glowImage) {
+      glowImage.x = this.player.x;
+      glowImage.y = this.player.y;
+    }
   }
 
   private updatePlayerAnimation(time: number): void {

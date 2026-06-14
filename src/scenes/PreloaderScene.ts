@@ -177,12 +177,14 @@ export class PreloaderScene extends Phaser.Scene {
     const barY = GAME_HEIGHT / 2 + 50;
 
     this.progressFill.clear();
-    
-    const gradient = this.progressFill.createLinearGradient(barX, 0, barX + barWidth * value, 0);
-    gradient.addColorStop(0, '#a8e6cf');
-    gradient.addColorStop(1, '#ff6b9d');
-    this.progressFill.fillGradientStyle(gradient);
-    this.progressFill.fillRoundedRect(barX + 2, barY + 2, (barWidth - 4) * value, barHeight - 4, 8);
+    const fillWidth = Math.max(0, (barWidth - 4) * value);
+
+    this.progressFill.fillGradientStyle(
+      0xa8e6cf, 0xff6b9d,
+      0xa8e6cf, 0xff6b9d,
+      1, 1, 1, 1
+    );
+    this.progressFill.fillRoundedRect(barX + 2, barY + 2, fillWidth, barHeight - 4, 8);
 
     this.percentText.setText(`${Math.round(value * 100)}%`);
   }

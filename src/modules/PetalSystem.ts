@@ -174,13 +174,15 @@ export class PetalSystem {
   }
 
   private updatePetals(time: number, player: Phaser.Physics.Arcade.Sprite | null): void {
-    this.petalPool.forEach((petal, index) => {
-      if (!petal.active) {
-        this.petalPool.splice(index, 1);
+    const alive: PetalObject[] = [];
+
+    this.petalPool.forEach((petal) => {
+      if (!petal.active) return;
+
+      if (petal.isCollecting) {
+        alive.push(petal);
         return;
       }
-
-      if (petal.isCollecting) return;
 
       const floatY = Math.sin(time * 0.002 + petal.floatOffset) * 5;
       const floatX = Math.cos(time * 0.0015 + petal.floatOffset) * 3;
@@ -203,7 +205,11 @@ export class PetalSystem {
           petal.y += Math.sin(angle) * speed * 0.016;
         }
       }
+
+      alive.push(petal);
     });
+
+    this.petalPool = alive;
   }
 
   private collectPetal(petal: PetalObject, player: Phaser.Physics.Arcade.Sprite): void {

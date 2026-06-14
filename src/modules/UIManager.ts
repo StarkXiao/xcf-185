@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PetalType, GameState } from '../types';
+import { PetalType, GameState, GameEvents } from '../types';
 import { PETAL_CONFIGS, GAME_WIDTH, GAME_HEIGHT } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -16,6 +16,7 @@ export class UIManager {
   private progressBar: Phaser.GameObjects.Graphics | null = null;
   private progressText: Phaser.GameObjects.Text | null = null;
   private toastText: Phaser.GameObjects.Text | null = null;
+  private uiListeners: Array<{ event: keyof GameEvents; callback: (data: any) => void }> = [];
 
   constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem) {
     this.scene = scene;
@@ -123,12 +124,22 @@ export class UIManager {
     btnBg.lineStyle(3, 0xffffff, 0.5);
     btnBg.strokeCircle(btnX, btnY, 45);
 
-    const btnGlow = this.scene.add.graphics();
-    const glowGradient = btnGlow.createRadialGradient(btnX, btnY, 0, btnX, btnY, 60);
-    glowGradient.addColorStop(0, 'rgba(255, 107, 157, 0.4)');
-    glowGradient.addColorStop(1, 'rgba(255, 107, 157, 0)');
-    btnGlow.fillGradientStyle(glowGradient);
-    btnGlow.fillCircle(btnX, btnY, 60);
+    const glowTextureKey = 'synth_btn_glow';
+    if (!this.scene.textures.exists(glowTextureKey)) {
+      const glowCanvas = this.scene.textures.createCanvas(glowTextureKey, 120, 120);
+      const glowCtx = glowCanvas.getContext();
+      const center = 60;
+      const grad = glowCtx.createRadialGradient(center, center, 0, center, center, 60);
+      grad.addColorStop(0, 'rgba(255, 107, 157, 0.4)');
+      grad.addColorStop(1, 'rgba(255, 107, 157, 0)');
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(center, center, 60, 0, Math.PI * 2);
+      glowCtx.fill();
+      glowCanvas.refresh();
+    }
+
+    const btnGlow = this.scene.add.image(btnX, btnY, glowTextureKey).setBlendMode(Phaser.BlendModes.ADD);
 
     const btnText = this.scene.add.text(btnX, btnY, '合成', {
       fontFamily: 'Arial',
@@ -268,25 +279,33 @@ export class UIManager {
   }
 
   private setupEventListeners(): void {
-    EventManager.getInstance().on('petal:collected', ({ type, count }) => {
+    const onCollected = ({ type, count }: GameEvents['petal:collected']) => {
       this.updateUI();
       const config = PETAL_CONFIGS[type];
       this.showToast(`+${count} ${config.name}`);
-    });
+    };
+    EventManager.getInstance().on('petal:collected', onCollected);
+    this.uiListeners.push({ event: 'petal:collected', callback: onCollected });
 
-    EventManager.getInstance().on('synthesis:complete', ({ output }) => {
+    const onSynthComplete = ({ output }: GameEvents['synthesis:complete']) => {
       this.updateUI();
       const config = PETAL_CONFIGS[output];
       this.showToast(`合成成功！获得 ${config.name}`, 3000);
-    });
+    };
+    EventManager.getInstance().on('synthesis:complete', onSynthComplete);
+    this.uiListeners.push({ event: 'synthesis:complete', callback: onSynthComplete });
 
-    EventManager.getInstance().on('synthesis:fail', ({ reason }) => {
+    const onSynthFail = ({ reason }: GameEvents['synthesis:fail']) => {
       this.showToast(reason, 2000, 0xff6b6b);
-    });
+    };
+    EventManager.getInstance().on('synthesis:fail', onSynthFail);
+    this.uiListeners.push({ event: 'synthesis:fail', callback: onSynthFail });
 
-    EventManager.getInstance().on('save:update', () => {
+    const onSaveUpdate = (_data: GameEvents['save:update']) => {
       this.updateUI();
-    });
+    };
+    EventManager.getInstance().on('save:update', onSaveUpdate);
+    this.uiListeners.push({ event: 'save:update', callback: onSaveUpdate });
   }
 
   private showToast(message: string, duration: number = 2000, color: number = 0xffffff): void {
@@ -607,18 +626,23 @@ export class UIManager {
     const progress = (unlockedCount / totalPetals) * 100;
 
     this.progressBar.clear();
-    
-    const gradient = this.progressBar.createLinearGradient(barX, 0, barX + barWidth * (progress / 100), 0);
-    gradient.addColorStop(0, '#a8e6cf');
-    gradient.addColorStop(1, '#ff6b9d');
-    this.progressBar.fillGradientStyle(gradient);
-    this.progressBar.fillRoundedRect(barX + 2, barY - barHeight / 2 + 2, (barWidth - 4) * (progress / 100), barHeight - 4, 8);
+    const fillWidth = Math.max(0, (barWidth - 4) * (progress / 100));
+
+    this.progressBar.fillGradientStyle(
+      0xa8e6cf, 0xff6b9d,
+      0xa8e6cf, 0xff6b9d,
+      1, 1, 1, 1
+    );
+    this.progressBar.fillRoundedRect(barX + 2, barY - barHeight / 2 + 2, fillWidth, barHeight - 4, 8);
 
     this.progressText.setText(`唤醒进度 ${Math.floor(progress)}%`);
   }
 
   public destroy(): void {
-    EventManager.getInstance().removeAllListeners();
+    this.uiListeners.forEach(({ event, callback }) => {
+      EventManager.getInstance().off(event, callback);
+    });
+    this.uiListeners = [];
     if (this.container) {
       this.container.destroy();
     }

@@ -209,7 +209,7 @@ export class ResultScene extends Phaser.Scene {
       targets: [panelBg, statsTitle, ...statTexts],
       alpha: 1,
       duration: 800,
-      delay: this.tweens.stagger(100),
+      delay: this.tweens.stagger(100, {}),
       ease: 'Cubic.Out'
     });
 

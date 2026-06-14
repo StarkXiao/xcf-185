@@ -71,8 +71,8 @@ export class SynthesisSystem {
 
   private playSynthesisAnimation(recipe: SynthesisRecipe, onComplete: () => void): void {
     const camera = this.scene.cameras.main;
-    const centerX = camera.worldView.x + camera.width / 2;
-    const centerY = camera.worldView.y + camera.height / 2;
+    const centerX = camera.scrollX + camera.width / 2;
+    const centerY = camera.scrollY + camera.height / 2;
 
     const magicCircle = this.createMagicCircle(centerX, centerY);
     const inputPetals = this.createInputPetals(recipe, centerX, centerY);
@@ -85,6 +85,16 @@ export class SynthesisSystem {
       duration: 1500,
       ease: 'Cubic.Out'
     });
+    const glowImg = (magicCircle as any)._glowImg;
+    if (glowImg) {
+      this.scene.tweens.add({
+        targets: glowImg,
+        scale: { from: 0.5, to: 1.5 },
+        alpha: { from: 0, to: 1 },
+        duration: 1500,
+        ease: 'Cubic.Out'
+      });
+    }
 
     inputPetals.forEach((petal, index) => {
       const angle = (index / inputPetals.length) * Math.PI * 2;
@@ -121,6 +131,7 @@ export class SynthesisSystem {
     });
 
     this.scene.time.delayedCall(1500, () => {
+      if (glowImg) glowImg.destroy();
       magicCircle.destroy();
       inputPetals.forEach(p => p.destroy());
 
@@ -141,6 +152,24 @@ export class SynthesisSystem {
   private createMagicCircle(x: number, y: number): Phaser.GameObjects.Graphics {
     const graphics = this.scene.add.graphics().setDepth(70);
 
+    const glowTextureKey = 'magic_circle_glow';
+    if (!this.scene.textures.exists(glowTextureKey)) {
+      const glowCanvas = this.scene.textures.createCanvas(glowTextureKey, 240, 240);
+      const glowCtx = glowCanvas.getContext();
+      const center = 120;
+      const grad = glowCtx.createRadialGradient(center, center, 0, center, center, 120);
+      grad.addColorStop(0, 'rgba(168, 230, 207, 0.3)');
+      grad.addColorStop(1, 'rgba(168, 230, 207, 0)');
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(center, center, 120, 0, Math.PI * 2);
+      glowCtx.fill();
+      glowCanvas.refresh();
+    }
+
+    const glowImg = this.scene.add.image(x, y, glowTextureKey).setDepth(70);
+    (graphics as any)._glowImg = glowImg;
+
     for (let i = 0; i < 3; i++) {
       const radius = 80 + i * 25;
       const alpha = 0.5 - i * 0.15;
@@ -160,12 +189,6 @@ export class SynthesisSystem {
         graphics.fillCircle(rx, ry, 4);
       }
     }
-
-    const gradient = graphics.createRadialGradient(x, y, 0, x, y, 120);
-    gradient.addColorStop(0, 'rgba(168, 230, 207, 0.3)');
-    gradient.addColorStop(1, 'rgba(168, 230, 207, 0)');
-    graphics.fillGradientStyle(gradient);
-    graphics.fillCircle(x, y, 120);
 
     return graphics;
   }

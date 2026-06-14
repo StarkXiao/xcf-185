@@ -1,10 +1,13 @@
 import Phaser from 'phaser';
 import './style.css';
-import { GAME_WIDTH, GAME_HEIGHT } from './config/GameConfig';
+import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, SYNTHESIS_RECIPES } from './config/GameConfig';
 import { PreloaderScene } from './scenes/PreloaderScene';
 import { MenuScene } from './scenes/MenuScene';
 import { GameScene } from './scenes/GameScene';
 import { ResultScene } from './scenes/ResultScene';
+import { SaveManager } from './managers/SaveManager';
+import { EventManager } from './managers/EventManager';
+import { AudioManager } from './managers/AudioManager';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -52,6 +55,12 @@ const config: Phaser.Types.Core.GameConfig = {
 
 window.addEventListener('load', () => {
   const game = new Phaser.Game(config);
+  (window as any).game = game;
+  (window as any).SaveManager = SaveManager.getInstance();
+  (window as any).EventManager = EventManager.getInstance();
+  (window as any).AudioManager = AudioManager.getInstance();
+  (window as any).PETAL_CONFIGS = PETAL_CONFIGS;
+  (window as any).SYNTHESIS_RECIPES = SYNTHESIS_RECIPES;
 
   game.events.on('ready', () => {
     console.log('🌙 梦境森林游戏已启动');

@@ -113,7 +113,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createButtons(): void {
-    const startY = GAME_HEIGHT * 0.55;
+    const startY = GAME_HEIGHT * 0.48;
     const hasSave = SaveManager.getInstance().hasSave();
 
     if (hasSave) {
@@ -148,12 +148,22 @@ export class MenuScene extends Phaser.Scene {
     btnBg.lineStyle(3, 0xffffff, 0.5);
     btnBg.strokeRoundedRect((GAME_WIDTH - btnWidth) / 2, y - btnHeight / 2, btnWidth, btnHeight, 15);
 
-    const btnGlow = this.add.graphics();
-    const glowGradient = btnGlow.createRadialGradient(GAME_WIDTH / 2, y, 0, GAME_WIDTH / 2, y, 180);
-    glowGradient.addColorStop(0, `rgba(${this.hexToRgb(color)}, 0.3)`);
-    glowGradient.addColorStop(1, `rgba(${this.hexToRgb(color)}, 0)`);
-    btnGlow.fillGradientStyle(glowGradient);
-    btnGlow.fillCircle(GAME_WIDTH / 2, y, 180);
+    const glowTextureKey = `btn_glow_${color}_${y}`;
+    if (!this.textures.exists(glowTextureKey)) {
+      const glowCanvas = this.textures.createCanvas(glowTextureKey, 360, 360);
+      const glowCtx = glowCanvas.getContext();
+      const center = 180;
+      const grad = glowCtx.createRadialGradient(center, center, 0, center, center, 180);
+      grad.addColorStop(0, `rgba(${this.hexToRgb(color)}, 0.3)`);
+      grad.addColorStop(1, `rgba(${this.hexToRgb(color)}, 0)`);
+      glowCtx.fillStyle = grad;
+      glowCtx.beginPath();
+      glowCtx.arc(center, center, 180, 0, Math.PI * 2);
+      glowCtx.fill();
+      glowCanvas.refresh();
+    }
+
+    const btnGlow = this.add.image(GAME_WIDTH / 2, y, glowTextureKey).setBlendMode(Phaser.BlendModes.ADD);
 
     const btnText = this.add.text(GAME_WIDTH / 2, y, text, {
       fontFamily: 'Arial',
