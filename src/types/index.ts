@@ -223,3 +223,76 @@ export interface Position {
   x: number;
   y: number;
 }
+
+export interface Obstacle {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  type: 'tree' | 'rock' | 'bush' | 'water';
+}
+
+export interface PathNode {
+  x: number;
+  y: number;
+  g: number;
+  h: number;
+  f: number;
+  parent: PathNode | null;
+}
+
+export interface ControlSettings {
+  joystickEnabled: boolean;
+  autoPathEnabled: boolean;
+  autoCollectEnabled: boolean;
+  showPathPreview: boolean;
+  vibrationEnabled: boolean;
+  sensitivity: number;
+}
+
+export interface TutorialStep {
+  id: string;
+  title: string;
+  content: string;
+  targetArea?: { x: number; y: number; width: number; height: number };
+  highlightElement?: string;
+  actionRequired?: 'click' | 'move' | 'collect' | 'synthesize';
+  completed: boolean;
+}
+
+export interface TutorialState {
+  currentStep: number;
+  steps: TutorialStep[];
+  completed: boolean;
+  dismissed: boolean;
+}
+
+export interface GameEvents {
+  'petal:collected': { type: PetalType; count: number };
+  'petal:spawned': { type: PetalType; x: number; y: number };
+  'synthesis:start': { recipeId: string };
+  'synthesis:complete': SynthesisResultData;
+  'synthesis:mutation': SynthesisResultData;
+  'synthesis:fail': SynthesisResultData;
+  'synthesis:recipe_unlocked': { recipeId: string };
+  'synthesis:record_added': { record: SynthesisRecord };
+  'collection:unlock': { type: PetalType; category: 'normal' | 'mutation' | 'failed' };
+  'game:complete': { playTime: number; totalCollected: number };
+  'audio:play': { key: string; volume?: number };
+  'save:update': { state: GameState };
+  'trend:updated': { point: ResourceTrendPoint };
+  'goal:progress': { goalId: string; current: number; target: number };
+  'goal:completed': { goal: Goal };
+  'goal:claimed': { goal: Goal };
+  'status:show': { message: StatusMessage };
+  'status:dismiss': { id: string };
+  'quickentry:action': { type: QuickEntryType };
+  'path:found': { path: Position[] };
+  'path:blocked': { target: Position };
+  'collectRange:updated': { range: number; level: number };
+  'tutorial:next': { step: TutorialStep };
+  'tutorial:complete': {};
+  'tutorial:reset': {};
+  'settings:updated': { settings: ControlSettings };
+}

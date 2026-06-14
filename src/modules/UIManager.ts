@@ -12,7 +12,8 @@ import {
   SynthesisRecord,
   StatusMessage,
   StatusType,
-  QuickEntryType
+  QuickEntryType,
+  ControlSettings
 } from '../types';
 import { 
   PETAL_CONFIGS, 
@@ -23,6 +24,7 @@ import {
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
+import { SettingsManager } from '../managers/SettingsManager';
 import { SynthesisSystem } from './SynthesisSystem';
 import { AudioManager } from '../managers/AudioManager';
 
@@ -50,6 +52,7 @@ export class UIManager {
   private statusMessageItems: Map<string, Phaser.GameObjects.Container> = new Map();
   private miniGoalContainer: Phaser.GameObjects.Container | null = null;
   private miniTrendContainer: Phaser.GameObjects.Container | null = null;
+  private settingsPanel: Phaser.GameObjects.Container | null = null;
 
   constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem) {
     this.scene = scene;
@@ -2159,7 +2162,7 @@ export class UIManager {
       contentContainer.add(tip1);
     }
 
-    const sectionTitle3 = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 110,
+    const sectionTitle3 = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 170,
       '🔧 系统设置', {
       fontFamily: 'Arial',
       fontSize: '16px',
@@ -2170,28 +2173,32 @@ export class UIManager {
     this.markAsInfoContent(sectionTitle3);
     contentContainer.add(sectionTitle3);
 
-    const settY = GAME_HEIGHT - 85;
+    const settY = GAME_HEIGHT - 145;
     const settW = (contentW - 20) / 2;
     const settH = 55;
 
     [
+      { label: '操作设置', color: 0xa8e6cf, icon: '⚙️', action: 'settings' },
       { label: '重新开始游戏', color: 0xff6b6b, icon: '🔄', action: 'reset' },
       { label: '返回主菜单', color: 0x666666, icon: '🏠', action: 'menu' }
     ].forEach((s, idx) => {
-      const sx = contentX + idx * (settW + 20);
+      const col = idx % 2;
+      const row = Math.floor(idx / 2);
+      const sx = contentX + col * (settW + 20);
+      const sy = settY + row * (settH + 10);
       gfx.fillStyle(0x1a0a2e, 0.9);
-      gfx.fillRoundedRect(sx, settY, settW, settH, 12);
+      gfx.fillRoundedRect(sx, sy, settW, settH, 12);
       gfx.lineStyle(2, s.color, 0.5);
-      gfx.strokeRoundedRect(sx, settY, settW, settH, 12);
+      gfx.strokeRoundedRect(sx, sy, settW, settH, 12);
 
-      const si = this.scene.add.text(sx + 22, settY + settH / 2, s.icon, {
+      const si = this.scene.add.text(sx + 22, sy + settH / 2, s.icon, {
         fontFamily: 'Arial',
         fontSize: '22px'
       }).setOrigin(0, 0.5);
       this.markAsInfoContent(si);
       contentContainer.add(si);
 
-      const sl = this.scene.add.text(sx + settW - 18, settY + settH / 2, s.label, {
+      const sl = this.scene.add.text(sx + settW - 18, sy + settH / 2, s.label, {
         fontFamily: 'Arial',
         fontSize: '14px',
         color: `#${s.color.toString(16).padStart(6, '0')}`,
@@ -2200,13 +2207,15 @@ export class UIManager {
       this.markAsInfoContent(sl);
       contentContainer.add(sl);
 
-      const zone = this.scene.add.zone(sx + settW / 2, settY + settH / 2, settW, settH)
+      const zone = this.scene.add.zone(sx + settW / 2, sy + settH / 2, settW, settH)
         .setInteractive({ useHandCursor: true });
       this.markAsInfoContent(zone);
       contentContainer.add(zone);
       zone.on('pointerup', () => {
         EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
-        if (s.action === 'reset') {
+        if (s.action === 'settings') {
+          this.openSettingsPanel();
+        } else if (s.action === 'reset') {
           if (confirm('确定要重新开始游戏吗？所有进度将丢失！')) {
             SaveManager.getInstance().resetGame();
             this.scene.scene.restart();
@@ -2215,6 +2224,254 @@ export class UIManager {
           this.scene.scene.start('Menu');
         }
       });
+    });
+  }
+
+  private openSettingsPanel(): void {
+    this.closeInfoCenterPanel();
+    
+    if (this.settingsPanel) return;
+
+    this.settingsPanel = this.scene.add.container(0, 0);
+    this.markAsInfoContent(this.settingsPanel);
+    this.container!.add(this.settingsPanel);
+
+    const panelX = 30;
+    const panelY = 120;
+    const panelW = GAME_WIDTH - 60;
+    const panelH = GAME_HEIGHT - 200;
+
+    const bg = this.scene.add.graphics();
+    bg.fillStyle(0x0a0415, 0.95);
+    bg.fillRoundedRect(panelX, panelY, panelW, panelH, 20);
+    bg.lineStyle(2, 0xc8a2ff, 0.3);
+    bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 20);
+    this.markAsInfoContent(bg);
+    this.settingsPanel.add(bg);
+
+    const title = this.scene.add.text(GAME_WIDTH / 2, panelY + 35,
+      '⚙️ 操作设置', {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.markAsInfoContent(title);
+    this.settingsPanel.add(title);
+
+    const closeBtn = this.scene.add.text(panelX + panelW - 25, panelY + 35, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#888888'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    this.markAsInfoContent(closeBtn);
+    this.settingsPanel.add(closeBtn);
+    closeBtn.on('pointerup', () => this.closeSettingsPanel());
+
+    this.renderSettingsContent(panelX, panelY, panelW, panelH);
+  }
+
+  private renderSettingsContent(panelX: number, panelY: number, panelW: number, panelH: number): void {
+    if (!this.settingsPanel) return;
+
+    const settings = SettingsManager.getInstance().getControlSettings();
+    const contentX = panelX + 30;
+    const contentW = panelW - 60;
+    let currentY = panelY + 80;
+
+    const settingsItems = [
+      {
+        key: 'joystickEnabled' as keyof ControlSettings,
+        label: '虚拟摇杆',
+        description: '启用屏幕左侧虚拟摇杆控制',
+        type: 'toggle' as const
+      },
+      {
+        key: 'autoPathEnabled' as keyof ControlSettings,
+        label: '自动寻路',
+        description: '点击地图自动规划路径移动',
+        type: 'toggle' as const
+      },
+      {
+        key: 'autoCollectEnabled' as keyof ControlSettings,
+        label: '自动采集',
+        description: '靠近花瓣自动吸附收集',
+        type: 'toggle' as const
+      },
+      {
+        key: 'showPathPreview' as keyof ControlSettings,
+        label: '路径预览',
+        description: '显示自动寻路的路径线',
+        type: 'toggle' as const
+      },
+      {
+        key: 'vibrationEnabled' as keyof ControlSettings,
+        label: '震动反馈',
+        description: '操作时震动提示',
+        type: 'toggle' as const
+      }
+    ];
+
+    const gfx = this.scene.add.graphics();
+    this.markAsInfoContent(gfx);
+    this.settingsPanel.add(gfx);
+
+    settingsItems.forEach((item, idx) => {
+      const itemY = currentY + idx * 70;
+      
+      gfx.fillStyle(0x1a0a2e, 0.8);
+      gfx.fillRoundedRect(contentX, itemY, contentW, 60, 12);
+      gfx.lineStyle(1, 0x333333, 0.5);
+      gfx.strokeRoundedRect(contentX, itemY, contentW, 60, 12);
+
+      const label = this.scene.add.text(contentX + 20, itemY + 22, item.label, {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.markAsInfoContent(label);
+      this.settingsPanel.add(label);
+
+      const desc = this.scene.add.text(contentX + 20, itemY + 42, item.description, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      this.markAsInfoContent(desc);
+      this.settingsPanel.add(desc);
+
+      const toggleX = contentX + contentW - 50;
+      const toggleY = itemY + 30;
+      const value = settings[item.key] as boolean;
+
+      const toggleBg = this.scene.add.graphics();
+      this.markAsInfoContent(toggleBg);
+      this.settingsPanel.add(toggleBg);
+      
+      toggleBg.fillStyle(value ? 0xa8e6cf : 0x333333, 1);
+      toggleBg.fillRoundedRect(toggleX - 25, toggleY - 15, 50, 30, 15);
+      
+      const knobX = value ? toggleX + 10 : toggleX - 10;
+      const knob = this.scene.add.circle(knobX, toggleY, 11, 0xffffff)
+        .setInteractive({ useHandCursor: true });
+      this.markAsInfoContent(knob);
+      this.settingsPanel.add(knob);
+
+      knob.on('pointerup', () => {
+        const newValue = !value;
+        SettingsManager.getInstance().updateControlSettings({ [item.key]: newValue });
+        EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+        this.refreshSettingsPanel();
+      });
+    });
+
+    const tutorialY = currentY + settingsItems.length * 70 + 20;
+    
+    const tutorialBtnBg = this.scene.add.graphics();
+    this.markAsInfoContent(tutorialBtnBg);
+    this.settingsPanel.add(tutorialBtnBg);
+    
+    tutorialBtnBg.fillStyle(0xc8a2ff, 0.2);
+    tutorialBtnBg.fillRoundedRect(contentX, tutorialY, contentW, 55, 12);
+    tutorialBtnBg.lineStyle(1, 0xc8a2ff, 0.5);
+    tutorialBtnBg.strokeRoundedRect(contentX, tutorialY, contentW, 55, 12);
+
+    const tutorialIcon = this.scene.add.text(contentX + 20, tutorialY + 28, '📖', {
+      fontFamily: 'Arial',
+      fontSize: '22px'
+    }).setOrigin(0, 0.5);
+    this.markAsInfoContent(tutorialIcon);
+    this.settingsPanel.add(tutorialIcon);
+
+    const tutorialLabel = this.scene.add.text(contentX + 60, tutorialY + 28, '重新查看新手教程', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#c8a2ff'
+    }).setOrigin(0, 0.5);
+    this.markAsInfoContent(tutorialLabel);
+    this.settingsPanel.add(tutorialLabel);
+
+    const tutorialBtn = this.scene.add.zone(contentX + contentW / 2, tutorialY + 28, contentW, 55)
+      .setInteractive({ useHandCursor: true });
+    this.markAsInfoContent(tutorialBtn);
+    this.settingsPanel.add(tutorialBtn);
+    
+    tutorialBtn.on('pointerup', () => {
+      SettingsManager.getInstance().resetTutorial();
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+      this.closeSettingsPanel();
+      this.showToast('📖 新手教程已重置', 2000, 0xc8a2ff);
+      EventManager.getInstance().emit('tutorial:reset', {});
+    });
+
+    const saveHint = this.scene.add.text(GAME_WIDTH / 2, panelY + panelH - 25,
+      '💡 所有设置自动保存', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#666666'
+    }).setOrigin(0.5);
+    this.markAsInfoContent(saveHint);
+    this.settingsPanel.add(saveHint);
+  }
+
+  private refreshSettingsPanel(): void {
+    if (this.settingsPanel && this.container) {
+      const panelX = 30;
+      const panelY = 120;
+      const panelW = GAME_WIDTH - 60;
+      const panelH = GAME_HEIGHT - 200;
+      
+      this.settingsPanel.destroy();
+      this.settingsPanel = this.scene.add.container(0, 0);
+      this.markAsInfoContent(this.settingsPanel);
+      this.container.add(this.settingsPanel);
+
+      const bg = this.scene.add.graphics();
+      bg.fillStyle(0x0a0415, 0.95);
+      bg.fillRoundedRect(panelX, panelY, panelW, panelH, 20);
+      bg.lineStyle(2, 0xc8a2ff, 0.3);
+      bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 20);
+      this.markAsInfoContent(bg);
+      this.settingsPanel.add(bg);
+
+      const title = this.scene.add.text(GAME_WIDTH / 2, panelY + 35,
+        '⚙️ 操作设置', {
+        fontFamily: 'Arial',
+        fontSize: '20px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.markAsInfoContent(title);
+      this.settingsPanel.add(title);
+
+      const closeBtn = this.scene.add.text(panelX + panelW - 25, panelY + 35, '✕', {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#888888'
+      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      this.markAsInfoContent(closeBtn);
+      this.settingsPanel.add(closeBtn);
+      closeBtn.on('pointerup', () => this.closeSettingsPanel());
+
+      this.renderSettingsContent(panelX, panelY, panelW, panelH);
+    }
+  }
+
+  private closeSettingsPanel(): void {
+    if (!this.settingsPanel || !this.container) return;
+    
+    this.scene.tweens.add({
+      targets: this.settingsPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.settingsPanel) {
+          this.container!.remove(this.settingsPanel);
+          this.settingsPanel.destroy();
+          this.settingsPanel = null;
+        }
+      }
     });
   }
 
@@ -2304,6 +2561,9 @@ export class UIManager {
       EventManager.getInstance().off(event, callback);
     });
     this.uiListeners = [];
+    if (this.settingsPanel) {
+      this.settingsPanel.destroy();
+    }
     if (this.container) {
       this.container.destroy();
     }

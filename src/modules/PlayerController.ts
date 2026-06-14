@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { PLAYER_SPEED, WORLD_WIDTH, WORLD_HEIGHT, PETAL_COLLECT_RANGE } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
+import { SettingsManager } from '../managers/SettingsManager';
+import { EventManager } from '../managers/EventManager';
+import { Position, Obstacle } from '../types';
+import { PathfindingSystem } from './PathfindingSystem';
+import { ObstacleSystem } from './ObstacleSystem';
+import { CollectRangeSystem } from './CollectRangeSystem';
+import { TutorialSystem } from './TutorialSystem';
 
 export class PlayerController {
   private scene: Phaser.Scene;
@@ -17,9 +24,22 @@ export class PlayerController {
   private joystickBase: Phaser.Geom.Circle | null = null;
   private joystickKnob: Phaser.Geom.Circle | null = null;
   private joystickActive = false;
+  
+  private pathfindingSystem: PathfindingSystem;
+  private obstacleSystem: ObstacleSystem;
+  private collectRangeSystem: CollectRangeSystem;
+  private tutorialSystem: TutorialSystem;
+  private currentPath: Position[] = [];
+  private currentPathIndex = 0;
+  private pathPreviewGraphics: Phaser.GameObjects.Graphics | null = null;
+  private targetIndicator: Phaser.GameObjects.Graphics | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    this.pathfindingSystem = new PathfindingSystem();
+    this.obstacleSystem = new ObstacleSystem(scene);
+    this.collectRangeSystem = new CollectRangeSystem(scene);
+    this.tutorialSystem = new TutorialSystem(scene);
   }
 
   public create(): void {
@@ -27,12 +47,22 @@ export class PlayerController {
     const startX = state.playerX || WORLD_WIDTH / 2;
     const startY = state.playerY || WORLD_HEIGHT / 2;
 
+    this.obstacleSystem.create();
+    this.pathfindingSystem.setObstacles(this.obstacleSystem.getObstacles());
+
     this.createPlayerSprite(startX, startY);
     this.createPlayerGlow(startX, startY);
     this.createTrailParticles();
+    
+    this.collectRangeSystem.create();
+    this.tutorialSystem.create();
+    
     this.setupInput();
     this.setupCamera();
     this.setupWorldBounds();
+    this.setupPhysicsCollisions();
+    this.createPathPreview();
+    this.createTargetIndicator();
   }
 
   private createPlayerSprite(x: number, y: number): void {
@@ -117,6 +147,8 @@ export class PlayerController {
   }
 
   private setupInput(): void {
+    const settings = SettingsManager.getInstance().getControlSettings();
+    
     this.cursors = this.scene.input.keyboard?.createCursorKeys() || null;
 
     const wasdKeys = this.scene.input.keyboard?.addKeys({
@@ -131,12 +163,11 @@ export class PlayerController {
     }
 
     this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.y > (this.scene.game.config.height as number) * 0.7) {
+      if (settings.joystickEnabled && pointer.y > (this.scene.game.config.height as number) * 0.7) {
         this.startJoystick(pointer);
       } else {
-        this.moveTargetX = pointer.worldX;
-        this.moveTargetY = pointer.worldY;
-        this.isMoving = true;
+        this.currentPath = [];
+        this.findPath(pointer.worldX, pointer.worldY);
       }
     });
 
@@ -208,13 +239,106 @@ export class PlayerController {
     this.scene.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
   }
 
+  private setupPhysicsCollisions(): void {
+    const obstacleGroup = this.obstacleSystem.getObstacleGroup();
+    if (obstacleGroup && this.player) {
+      this.scene.physics.add.collider(this.player, obstacleGroup);
+    }
+  }
+
+  private createPathPreview(): void {
+    const settings = SettingsManager.getInstance().getControlSettings();
+    if (!settings.showPathPreview) return;
+
+    this.pathPreviewGraphics = this.scene.add.graphics().setDepth(12).setScrollFactor(0);
+  }
+
+  private createTargetIndicator(): void {
+    this.targetIndicator = this.scene.add.graphics().setDepth(16);
+  }
+
+  private updatePathPreview(): void {
+    if (!this.pathPreviewGraphics) return;
+    
+    const settings = SettingsManager.getInstance().getControlSettings();
+    if (!settings.showPathPreview || this.currentPath.length === 0) {
+      this.pathPreviewGraphics.clear();
+      return;
+    }
+
+    this.pathPreviewGraphics.clear();
+    
+    const camera = this.scene.cameras.main;
+    const offsetX = -camera.scrollX;
+    const offsetY = -camera.scrollY;
+
+    this.pathPreviewGraphics.lineStyle(3, 0xffd93d, 0.6);
+    this.pathPreviewGraphics.beginPath();
+    
+    this.currentPath.forEach((point, index) => {
+      const screenX = point.x + offsetX;
+      const screenY = point.y + offsetY;
+      
+      if (index === 0) {
+        this.pathPreviewGraphics!.moveTo(screenX, screenY);
+      } else {
+        this.pathPreviewGraphics!.lineTo(screenX, screenY);
+      }
+    });
+    this.pathPreviewGraphics.strokePath();
+
+    this.currentPath.forEach((point, index) => {
+      if (index % 3 === 0 || index === this.currentPath.length - 1) {
+        const screenX = point.x + offsetX;
+        const screenY = point.y + offsetY;
+        
+        this.pathPreviewGraphics!.fillStyle(0xffd93d, 0.8);
+        this.pathPreviewGraphics!.beginPath();
+        this.pathPreviewGraphics!.arc(screenX, screenY, 4, 0, Math.PI * 2);
+        this.pathPreviewGraphics!.fill();
+      }
+    });
+  }
+
+  private updateTargetIndicator(): void {
+    if (!this.targetIndicator) return;
+    
+    if (!this.isMoving || this.currentPath.length === 0) {
+      this.targetIndicator.clear();
+      return;
+    }
+
+    this.targetIndicator.clear();
+    
+    const target = this.currentPath[this.currentPath.length - 1];
+    const pulse = 1 + Math.sin(this.scene.time.now * 0.005) * 0.2;
+    
+    this.targetIndicator.lineStyle(2, 0xffd93d, 0.8);
+    this.targetIndicator.beginPath();
+    this.targetIndicator.arc(target.x, target.y, 20 * pulse, 0, Math.PI * 2);
+    this.targetIndicator.stroke();
+    
+    this.targetIndicator.fillStyle(0xffd93d, 0.3);
+    this.targetIndicator.beginPath();
+    this.targetIndicator.arc(target.x, target.y, 15 * pulse, 0, Math.PI * 2);
+    this.targetIndicator.fill();
+  }
+
   public update(time: number, delta: number): void {
     if (!this.player) return;
 
     this.handleKeyboardInput();
     this.handlePointMove();
+    this.handlePathMovement(delta);
     this.updatePlayerGlow();
     this.updatePlayerAnimation(time);
+    this.updatePathPreview();
+    this.updateTargetIndicator();
+    
+    this.obstacleSystem.update(time, delta);
+    this.collectRangeSystem.updatePosition(this.player.x, this.player.y);
+    this.collectRangeSystem.update(time, delta);
+    this.tutorialSystem.update(time, delta);
 
     SaveManager.getInstance().updatePlayerPosition(this.player.x, this.player.y);
   }
@@ -243,8 +367,54 @@ export class PlayerController {
     }
   }
 
+  private handlePathMovement(delta: number): void {
+    if (!this.player || this.currentPath.length === 0 || this.joystickActive) return;
+    if (this.currentPathIndex >= this.currentPath.length) {
+      this.currentPath = [];
+      this.isMoving = false;
+      this.player.setVelocity(0, 0);
+      return;
+    }
+
+    const target = this.currentPath[this.currentPathIndex];
+    const dx = target.x - this.player.x;
+    const dy = target.y - this.player.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < 10) {
+      this.currentPathIndex++;
+      if (this.currentPathIndex >= this.currentPath.length) {
+        this.currentPath = [];
+        this.isMoving = false;
+        this.player.setVelocity(0, 0);
+      }
+      return;
+    }
+
+    const settings = SettingsManager.getInstance().getControlSettings();
+    let newPos = { x: this.player.x, y: this.player.y };
+
+    if (settings.autoPathEnabled) {
+      newPos = this.obstacleSystem.avoidObstacles(
+        { x: this.player.x, y: this.player.y },
+        target,
+        delta
+      );
+    } else {
+      const angle = Math.atan2(dy, dx);
+      const speed = Math.min(PLAYER_SPEED * (delta / 1000), distance);
+      newPos.x += Math.cos(angle) * speed;
+      newPos.y += Math.sin(angle) * speed;
+    }
+
+    const velocityX = (newPos.x - this.player.x) * (1000 / delta);
+    const velocityY = (newPos.y - this.player.y) * (1000 / delta);
+    this.player.setVelocity(velocityX, velocityY);
+  }
+
   private handlePointMove(): void {
     if (!this.player || !this.isMoving || this.joystickActive) return;
+    if (this.currentPath.length > 0) return;
 
     const dx = this.moveTargetX - this.player.x;
     const dy = this.moveTargetY - this.player.y;
@@ -259,6 +429,37 @@ export class PlayerController {
     const angle = Math.atan2(dy, dx);
     const speed = Math.min(PLAYER_SPEED, distance * 2);
     this.player.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
+  }
+
+  private findPath(targetX: number, targetY: number): void {
+    if (!this.player) return;
+
+    const settings = SettingsManager.getInstance().getControlSettings();
+    
+    if (settings.autoPathEnabled) {
+      const path = this.pathfindingSystem.findPath(
+        { x: this.player.x, y: this.player.y },
+        { x: targetX, y: targetY }
+      );
+
+      if (path && path.length > 0) {
+        this.currentPath = path;
+        this.currentPathIndex = 1;
+        this.isMoving = true;
+        this.tutorialSystem.notifyPlayerMoved();
+        EventManager.getInstance().emit('path:found', { path });
+      } else {
+        this.currentPath = [];
+        this.moveTargetX = targetX;
+        this.moveTargetY = targetY;
+        this.isMoving = true;
+        EventManager.getInstance().emit('path:blocked', { target: { x: targetX, y: targetY } });
+      }
+    } else {
+      this.moveTargetX = targetX;
+      this.moveTargetY = targetY;
+      this.isMoving = true;
+    }
   }
 
   private updatePlayerGlow(): void {
@@ -287,7 +488,27 @@ export class PlayerController {
   }
 
   public getCollectRange(): number {
-    return PETAL_COLLECT_RANGE;
+    return this.collectRangeSystem.getCurrentRange();
+  }
+
+  public getAttractRange(): number {
+    return this.collectRangeSystem.getAttractRange();
+  }
+
+  public getObstacleSystem(): ObstacleSystem {
+    return this.obstacleSystem;
+  }
+
+  public getCollectRangeSystem(): CollectRangeSystem {
+    return this.collectRangeSystem;
+  }
+
+  public getTutorialSystem(): TutorialSystem {
+    return this.tutorialSystem;
+  }
+
+  public getObstacles(): Obstacle[] {
+    return this.obstacleSystem.getObstacles();
   }
 
   public destroy(): void {
@@ -298,5 +519,14 @@ export class PlayerController {
     if (this.joystickGraphics) {
       this.joystickGraphics.destroy();
     }
+    if (this.pathPreviewGraphics) {
+      this.pathPreviewGraphics.destroy();
+    }
+    if (this.targetIndicator) {
+      this.targetIndicator.destroy();
+    }
+    this.obstacleSystem.destroy();
+    this.collectRangeSystem.destroy();
+    this.tutorialSystem.destroy();
   }
 }

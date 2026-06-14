@@ -21,6 +21,79 @@ export const PETAL_COLLECT_RANGE = 60;
 export const PETAL_MAX_COUNT = 15;
 export const AUTO_SAVE_INTERVAL = 10000;
 
+export const COLLECT_RANGE_GROWTH = {
+  baseRange: 60,
+  rangePerLevel: 15,
+  maxRange: 180,
+  petalsPerLevel: 20,
+  maxLevel: 10
+};
+
+export const OBSTACLE_CONFIG = {
+  count: 25,
+  minSize: 60,
+  maxSize: 120,
+  avoidRadius: 200
+};
+
+export const PATHFINDING_CONFIG = {
+  gridSize: 50,
+  maxIterations: 500,
+  smoothPath: true
+};
+
+export const INITIAL_CONTROL_SETTINGS = {
+  joystickEnabled: true,
+  autoPathEnabled: true,
+  autoCollectEnabled: true,
+  showPathPreview: true,
+  vibrationEnabled: true,
+  sensitivity: 1.0
+};
+
+export const TUTORIAL_STEPS = [
+  {
+    id: 'tutorial_move',
+    title: '欢迎来到梦境森林',
+    content: '点击屏幕任意位置，角色会自动寻路移动过去。遇到障碍物时会自动绕行哦！',
+    actionRequired: 'move' as const,
+    completed: false
+  },
+  {
+    id: 'tutorial_collect',
+    title: '收集花瓣',
+    content: '靠近发光的花瓣即可自动收集。收集越多，你的吸附范围会越大！',
+    actionRequired: 'collect' as const,
+    completed: false
+  },
+  {
+    id: 'tutorial_range',
+    title: '吸附范围成长',
+    content: '注意角色周围的光圈，那是你的收集范围。每收集20朵花瓣，范围就会扩大！',
+    completed: false
+  },
+  {
+    id: 'tutorial_synthesis',
+    title: '花瓣合成',
+    content: '点击右下角的合成按钮，可以将收集的花瓣合成更高级的品种。',
+    highlightElement: 'synthesis_button',
+    actionRequired: 'click' as const,
+    completed: false
+  },
+  {
+    id: 'tutorial_settings',
+    title: '操作设置',
+    content: '在游戏中可以随时调整操作方式，包括摇杆开关、自动寻路等功能。',
+    completed: false
+  },
+  {
+    id: 'tutorial_complete',
+    title: '教程完成！',
+    content: '恭喜你掌握了基本操作！现在去探索梦境森林，收集所有稀有花瓣吧！',
+    completed: false
+  }
+];
+
 export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
   [PetalType.MOONLIGHT]: {
     type: PetalType.MOONLIGHT,
@@ -593,8 +666,23 @@ export const INITIAL_GAME_STATE: GameState = {
   lastSaveTime: 0
 };
 
+export const INITIAL_TUTORIAL_STATE = {
+  currentStep: 0,
+  steps: JSON.parse(JSON.stringify(TUTORIAL_STEPS)),
+  completed: false,
+  dismissed: false
+};
+
+export const INITIAL_COLLECT_RANGE_STATE = {
+  currentRange: COLLECT_RANGE_GROWTH.baseRange,
+  currentLevel: 1,
+  petalsForNextLevel: COLLECT_RANGE_GROWTH.petalsPerLevel
+};
+
 export const STORAGE_KEY = 'dream_forest_save';
-export const SAVE_VERSION = '3.0.0';
+export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
+export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
+export const SAVE_VERSION = '4.0.0';
 
 export const INITIAL_SETTINGS = {
   bgmVolume: 0.5,
@@ -608,6 +696,26 @@ export function getInitialGameState() {
 
 export function getInitialSettings() {
   return JSON.parse(JSON.stringify(INITIAL_SETTINGS));
+}
+
+export function getInitialControlSettings() {
+  return JSON.parse(JSON.stringify(INITIAL_CONTROL_SETTINGS));
+}
+
+export function getInitialTutorialState() {
+  return JSON.parse(JSON.stringify(INITIAL_TUTORIAL_STATE));
+}
+
+export function getInitialCollectRangeState() {
+  return JSON.parse(JSON.stringify(INITIAL_COLLECT_RANGE_STATE));
+}
+
+export function calculateCollectRange(totalCollected: number): { range: number; level: number; progress: number } {
+  const { baseRange, rangePerLevel, maxRange, petalsPerLevel, maxLevel } = COLLECT_RANGE_GROWTH;
+  const level = Math.min(Math.floor(totalCollected / petalsPerLevel) + 1, maxLevel);
+  const range = Math.min(baseRange + (level - 1) * rangePerLevel, maxRange);
+  const progress = (totalCollected % petalsPerLevel) / petalsPerLevel;
+  return { range, level, progress };
 }
 
 export const MAX_PETALS_ON_SCREEN = PETAL_MAX_COUNT;

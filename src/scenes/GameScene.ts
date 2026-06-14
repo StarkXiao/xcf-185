@@ -61,7 +61,10 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.sceneRenderer.update(time, delta);
     this.playerController.update(time, delta);
-    this.petalSystem.update(time, delta, this.playerController.getPlayer());
+    
+    const collectRange = this.playerController.getCollectRange();
+    const attractRange = this.playerController.getAttractRange();
+    this.petalSystem.update(time, delta, this.playerController.getPlayer(), collectRange, attractRange);
 
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {

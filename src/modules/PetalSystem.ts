@@ -121,16 +121,6 @@ export class PetalSystem {
     }
   }
 
-  public update(time: number, delta: number, player: Phaser.Physics.Arcade.Sprite | null): void {
-    this.spawnTimer += delta;
-    if (this.spawnTimer >= PETAL_SPAWN_INTERVAL && this.petalGroup && this.petalGroup.getLength() < MAX_PETALS_ON_SCREEN) {
-      this.spawnPetal();
-      this.spawnTimer = 0;
-    }
-
-    this.updatePetals(time, player);
-  }
-
   private spawnPetal(): void {
     if (!this.petalGroup) return;
 
@@ -173,7 +163,17 @@ export class PetalSystem {
     return PetalType.MOONLIGHT;
   }
 
-  private updatePetals(time: number, player: Phaser.Physics.Arcade.Sprite | null): void {
+  public update(time: number, delta: number, player: Phaser.Physics.Arcade.Sprite | null, collectRange: number = 80, attractRange: number = 150): void {
+    this.spawnTimer += delta;
+    if (this.spawnTimer >= PETAL_SPAWN_INTERVAL && this.petalGroup && this.petalGroup.getLength() < MAX_PETALS_ON_SCREEN) {
+      this.spawnPetal();
+      this.spawnTimer = 0;
+    }
+
+    this.updatePetals(time, delta, player, collectRange, attractRange);
+  }
+
+  private updatePetals(time: number, delta: number, player: Phaser.Physics.Arcade.Sprite | null, collectRange: number, attractRange: number): void {
     const alive: PetalObject[] = [];
 
     this.petalPool.forEach((petal) => {
@@ -193,14 +193,12 @@ export class PetalSystem {
 
       if (player) {
         const distance = Phaser.Math.Distance.Between(petal.x, petal.y, player.x, player.y);
-        const collectRange = 80;
-        const attractRange = 150;
 
         if (distance < collectRange) {
           this.collectPetal(petal, player);
         } else if (distance < attractRange) {
           const angle = Phaser.Math.Angle.Between(petal.x, petal.y, player.x, player.y);
-          const speed = (1 - distance / attractRange) * 100;
+          const speed = (1 - distance / attractRange) * 150;
           petal.x += Math.cos(angle) * speed * 0.016;
           petal.y += Math.sin(angle) * speed * 0.016;
         }
