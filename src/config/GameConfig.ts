@@ -11,7 +11,12 @@ import {
   InheritanceType,
   InheritanceOption,
   KeyMilestone,
-  AudioContextType
+  AudioContextType,
+  CollectionTask,
+  CollectionTaskChain,
+  CollectionTaskStatus,
+  RedDotState,
+  TaskReward
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -107,7 +112,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0x4488ff,
     spawnWeight: 35,
     description: '散发柔和月光的基础花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '月光林地',
+    regionDescription: '森林东部的开阔草地，夜晚时分会被月光笼罩',
+    spawnConditions: '全天可收集，夜间出现概率提升',
+    recommendedRecipes: ['recipe_1', 'recipe_7'],
+    unlockHint: '初始即可收集',
+    difficulty: 'easy'
   },
   [PetalType.STARLIGHT]: {
     type: PetalType.STARLIGHT,
@@ -117,7 +128,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0xffcc00,
     spawnWeight: 25,
     description: '闪烁着星星光芒的花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '星辰湖畔',
+    regionDescription: '森林中央的静谧湖泊，星空倒映在湖面上',
+    spawnConditions: '通过合成获得，或在深夜有极小概率自然出现',
+    recommendedRecipes: ['recipe_2', 'recipe_7', 'recipe_8'],
+    unlockHint: '使用3朵月光花瓣合成解锁',
+    difficulty: 'easy'
   },
   [PetalType.DEW]: {
     type: PetalType.DEW,
@@ -127,7 +144,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0x44ddaa,
     spawnWeight: 18,
     description: '凝结着晨露的清新花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '晨露山谷',
+    regionDescription: '森林西北部的山谷，清晨时分雾气弥漫',
+    spawnConditions: '通过合成获得，清晨有极小概率自然出现',
+    recommendedRecipes: ['recipe_3', 'recipe_8', 'recipe_9'],
+    unlockHint: '使用3朵星光花瓣合成解锁',
+    difficulty: 'medium'
   },
   [PetalType.GLOWING]: {
     type: PetalType.GLOWING,
@@ -137,7 +160,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0xff66aa,
     spawnWeight: 10,
     description: '散发梦幻荧光的神秘花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '荧光洞穴',
+    regionDescription: '森林深处的神秘洞穴，洞壁散发着微弱荧光',
+    spawnConditions: '通过合成获得，仅在深夜洞穴中可能自然出现',
+    recommendedRecipes: ['recipe_4', 'recipe_9', 'recipe_10'],
+    unlockHint: '使用3朵露珠花瓣合成解锁',
+    difficulty: 'medium'
   },
   [PetalType.DREAM]: {
     type: PetalType.DREAM,
@@ -147,7 +176,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0x9966ff,
     spawnWeight: 6,
     description: '蕴含梦境力量的稀有花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '梦境花园',
+    regionDescription: '只有在梦中才能到达的神秘花园',
+    spawnConditions: '通过合成获得，稀有变异时有极小概率出现',
+    recommendedRecipes: ['recipe_5', 'recipe_10'],
+    unlockHint: '使用3朵荧光花瓣合成解锁',
+    difficulty: 'hard'
   },
   [PetalType.ETERNAL]: {
     type: PetalType.ETERNAL,
@@ -157,7 +192,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0xffaa00,
     spawnWeight: 4,
     description: '传说中永不凋零的永恒花瓣',
-    category: 'normal'
+    category: 'normal',
+    regionName: '永恒神殿',
+    regionDescription: '森林最深处的古老神殿，传说封印着永恒之力',
+    spawnConditions: '通过合成获得，极难自然出现',
+    recommendedRecipes: ['recipe_6', 'recipe_10'],
+    unlockHint: '使用3朵梦境花瓣合成解锁',
+    difficulty: 'hard'
   },
   [PetalType.WAKEUP]: {
     type: PetalType.WAKEUP,
@@ -167,7 +208,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     glowColor: 0xff6699,
     spawnWeight: 0,
     description: '能够唤醒沉睡恋人的神圣之花',
-    category: 'normal'
+    category: 'normal',
+    regionName: '恋人长眠之地',
+    regionDescription: '神殿最深处，恋人沉睡的祭坛',
+    spawnConditions: '仅能通过特定配方合成',
+    recommendedRecipes: ['recipe_6'],
+    unlockHint: '使用1朵永恒花瓣+2朵梦境花瓣+3朵荧光花瓣合成',
+    difficulty: 'legendary'
   },
   [PetalType.MOONLIGHT_SHIMMER]: {
     type: PetalType.MOONLIGHT_SHIMMER,
@@ -178,7 +225,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '月光花瓣的变异体，散发着淡淡月华光辉',
     isMutation: true,
-    category: 'mutation'
+    category: 'mutation',
+    regionName: '月华台',
+    regionDescription: '月光林地最高处的石台，满月时会聚集月华',
+    spawnConditions: '合成月光花瓣时变异获得，满月之夜概率提升',
+    recommendedRecipes: ['recipe_11'],
+    unlockHint: '合成月光花瓣时有15%概率变异获得',
+    difficulty: 'medium'
   },
   [PetalType.STARLIGHT_BURST]: {
     type: PetalType.STARLIGHT_BURST,
@@ -189,7 +242,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '星光花瓣的变异体，如星爆般璀璨夺目',
     isMutation: true,
-    category: 'mutation'
+    category: 'mutation',
+    regionName: '流星坡',
+    regionDescription: '星辰湖畔的山坡，常有流星划过',
+    spawnConditions: '合成星光花瓣时变异获得，流星夜概率提升',
+    recommendedRecipes: ['recipe_12'],
+    unlockHint: '合成星光花瓣时有12%概率变异获得',
+    difficulty: 'medium'
   },
   [PetalType.DEW_CRYSTAL]: {
     type: PetalType.DEW_CRYSTAL,
@@ -200,7 +259,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '露珠花瓣的变异体，凝结成晶莹剔透的水晶形态',
     isMutation: true,
-    category: 'mutation'
+    category: 'mutation',
+    regionName: '冰晶洞',
+    regionDescription: '晨露山谷深处的洞穴，洞壁挂满冰晶',
+    spawnConditions: '合成露珠花瓣时变异获得，寒冷清晨概率提升',
+    recommendedRecipes: [],
+    unlockHint: '合成露珠花瓣时有10%概率变异获得',
+    difficulty: 'hard'
   },
   [PetalType.GLOWING_EMBER]: {
     type: PetalType.GLOWING_EMBER,
@@ -211,7 +276,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '荧光花瓣的变异体，如余烬般温暖的荧光',
     isMutation: true,
-    category: 'mutation'
+    category: 'mutation',
+    regionName: '余烬谷',
+    regionDescription: '荧光洞穴深处的火山遗迹，仍有余温',
+    spawnConditions: '合成荧光花瓣时变异获得，夜晚概率提升',
+    recommendedRecipes: [],
+    unlockHint: '合成荧光花瓣时有8%概率变异获得',
+    difficulty: 'hard'
   },
   [PetalType.DREAM_PHANTOM]: {
     type: PetalType.DREAM_PHANTOM,
@@ -222,7 +293,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '梦境花瓣的变异体，缥缈虚幻的梦幻形态',
     isMutation: true,
-    category: 'mutation'
+    category: 'mutation',
+    regionName: '幻影迷宫',
+    regionDescription: '梦境花园深处的迷宫，令人迷失方向',
+    spawnConditions: '合成梦境花瓣时变异获得，深夜概率提升',
+    recommendedRecipes: [],
+    unlockHint: '合成梦境花瓣时有5%概率变异获得',
+    difficulty: 'legendary'
   },
   [PetalType.FAILED_DUST]: {
     type: PetalType.FAILED_DUST,
@@ -233,7 +310,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '合成失败的产物，花瓣化为缥缈的尘埃',
     isFailed: true,
-    category: 'failed'
+    category: 'failed',
+    regionName: '消散之境',
+    regionDescription: '所有失败产物最终消散的虚无空间',
+    spawnConditions: '合成失败时获得',
+    recommendedRecipes: [],
+    unlockHint: '任意合成失败时有概率获得',
+    difficulty: 'easy'
   },
   [PetalType.FAILED_SLIME]: {
     type: PetalType.FAILED_SLIME,
@@ -244,7 +327,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '合成失败的产物，不稳定的花瓣能量凝结成黏液',
     isFailed: true,
-    category: 'failed'
+    category: 'failed',
+    regionName: '混沌池',
+    regionDescription: '消散之境中的不稳定能量池',
+    spawnConditions: '合成失败时获得',
+    recommendedRecipes: [],
+    unlockHint: '任意合成失败时有概率获得',
+    difficulty: 'easy'
   },
   [PetalType.FAILED_ASH]: {
     type: PetalType.FAILED_ASH,
@@ -255,7 +344,13 @@ export const PETAL_CONFIGS: Record<PetalType, PetalConfig> = {
     spawnWeight: 0,
     description: '合成失败的产物，花瓣完全燃烧后的残余灰烬',
     isFailed: true,
-    category: 'failed'
+    category: 'failed',
+    regionName: '焚化场',
+    regionDescription: '消散之境中能量完全耗尽的区域',
+    spawnConditions: '合成失败时获得',
+    recommendedRecipes: [],
+    unlockHint: '任意合成失败时有概率获得',
+    difficulty: 'easy'
   }
 };
 
@@ -598,6 +693,399 @@ export const INITIAL_GOALS: Goal[] = [
   }
 ];
 
+export const INITIAL_COLLECTION_TASK_CHAINS: CollectionTaskChain[] = [
+  {
+    id: 'chain_normal',
+    title: '普通花瓣收集',
+    description: '收集所有普通花瓣，探索梦境森林的奥秘',
+    icon: '🌸',
+    color: 0xa8e6cf,
+    tasks: [
+      'task_moonlight_10',
+      'task_starlight_5',
+      'task_dew_3',
+      'task_glowing_2',
+      'task_dream_2',
+      'task_eternal_1',
+      'task_wakeup_1'
+    ],
+    category: 'normal',
+    chainReward: {
+      type: 'petal',
+      petalType: PetalType.ETERNAL,
+      count: 1,
+      description: '完成普通收集链，获得1朵永恒花瓣'
+    },
+    isChainComplete: false,
+    chainClaimed: false
+  },
+  {
+    id: 'chain_mutation',
+    title: '变异花瓣收集',
+    description: '发现所有变异花瓣，见证奇迹的诞生',
+    icon: '✨',
+    color: 0xffaa00,
+    tasks: [
+      'task_moonlight_shimmer_1',
+      'task_starlight_burst_1',
+      'task_dew_crystal_1',
+      'task_glowing_ember_1',
+      'task_dream_phantom_1'
+    ],
+    category: 'mutation',
+    chainReward: {
+      type: 'petal',
+      petalType: PetalType.DREAM_PHANTOM,
+      count: 2,
+      description: '完成变异收集链，获得2朵幻梦花瓣'
+    },
+    isChainComplete: false,
+    chainClaimed: false
+  },
+  {
+    id: 'chain_failed',
+    title: '失败产物收集',
+    description: '记录所有合成失败产物，从失败中学习',
+    icon: '💀',
+    color: 0x888888,
+    tasks: [
+      'task_failed_dust_3',
+      'task_failed_slime_2',
+      'task_failed_ash_2'
+    ],
+    category: 'failed',
+    chainReward: {
+      type: 'goal_progress',
+      description: '完成失败收集链，所有目标进度+10%'
+    },
+    isChainComplete: false,
+    chainClaimed: false
+  }
+];
+
+export const INITIAL_COLLECTION_TASKS: CollectionTask[] = [
+  {
+    id: 'task_moonlight_10',
+    chainId: 'chain_normal',
+    title: '月光收集者',
+    description: '收集10朵月光花瓣',
+    targetPetalType: PetalType.MOONLIGHT,
+    targetCount: 10,
+    currentCount: 0,
+    status: CollectionTaskStatus.IN_PROGRESS,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.MOONLIGHT,
+      count: 3,
+      description: '奖励3朵月光花瓣'
+    },
+    order: 1,
+    unlockHint: '初始任务，收集月光花瓣开始你的旅程',
+    recommendedRecipes: ['recipe_1', 'recipe_7'],
+    regionSource: '月光林地',
+    regionDescription: '森林东部的开阔草地'
+  },
+  {
+    id: 'task_starlight_5',
+    chainId: 'chain_normal',
+    title: '星光点点',
+    description: '收集5朵星光花瓣',
+    targetPetalType: PetalType.STARLIGHT,
+    targetCount: 5,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.STARLIGHT,
+      count: 2,
+      description: '奖励2朵星光花瓣'
+    },
+    order: 2,
+    unlockHint: '完成「月光收集者」后解锁，先合成星光花瓣吧',
+    recommendedRecipes: ['recipe_1', 'recipe_2', 'recipe_7'],
+    regionSource: '星辰湖畔',
+    regionDescription: '森林中央的静谧湖泊'
+  },
+  {
+    id: 'task_dew_3',
+    chainId: 'chain_normal',
+    title: '晨露凝结',
+    description: '收集3朵露珠花瓣',
+    targetPetalType: PetalType.DEW,
+    targetCount: 3,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DEW,
+      count: 1,
+      description: '奖励1朵露珠花瓣'
+    },
+    order: 3,
+    unlockHint: '完成「星光点点」后解锁',
+    recommendedRecipes: ['recipe_2', 'recipe_3', 'recipe_8'],
+    regionSource: '晨露山谷',
+    regionDescription: '森林西北部的山谷'
+  },
+  {
+    id: 'task_glowing_2',
+    chainId: 'chain_normal',
+    title: '荧光闪烁',
+    description: '收集2朵荧光花瓣',
+    targetPetalType: PetalType.GLOWING,
+    targetCount: 2,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.GLOWING,
+      count: 1,
+      description: '奖励1朵荧光花瓣'
+    },
+    order: 4,
+    unlockHint: '完成「晨露凝结」后解锁',
+    recommendedRecipes: ['recipe_3', 'recipe_4', 'recipe_9'],
+    regionSource: '荧光洞穴',
+    regionDescription: '森林深处的神秘洞穴'
+  },
+  {
+    id: 'task_dream_2',
+    chainId: 'chain_normal',
+    title: '梦境编织',
+    description: '收集2朵梦境花瓣',
+    targetPetalType: PetalType.DREAM,
+    targetCount: 2,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DREAM,
+      count: 1,
+      description: '奖励1朵梦境花瓣'
+    },
+    order: 5,
+    unlockHint: '完成「荧光闪烁」后解锁',
+    recommendedRecipes: ['recipe_4', 'recipe_5', 'recipe_10'],
+    regionSource: '梦境花园',
+    regionDescription: '只有在梦中才能到达的神秘花园'
+  },
+  {
+    id: 'task_eternal_1',
+    chainId: 'chain_normal',
+    title: '永恒绽放',
+    description: '收集1朵永恒花瓣',
+    targetPetalType: PetalType.ETERNAL,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.ETERNAL,
+      count: 1,
+      description: '奖励1朵永恒花瓣'
+    },
+    order: 6,
+    unlockHint: '完成「梦境编织」后解锁',
+    recommendedRecipes: ['recipe_5', 'recipe_6', 'recipe_10'],
+    regionSource: '永恒神殿',
+    regionDescription: '森林最深处的古老神殿'
+  },
+  {
+    id: 'task_wakeup_1',
+    chainId: 'chain_normal',
+    title: '恋人苏醒',
+    description: '收集1朵唤醒之花',
+    targetPetalType: PetalType.WAKEUP,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.WAKEUP,
+      count: 1,
+      description: '奖励1朵唤醒之花'
+    },
+    order: 7,
+    unlockHint: '完成「永恒绽放」后解锁，这是最终的挑战',
+    recommendedRecipes: ['recipe_6'],
+    regionSource: '恋人长眠之地',
+    regionDescription: '神殿最深处的祭坛'
+  },
+  {
+    id: 'task_moonlight_shimmer_1',
+    chainId: 'chain_mutation',
+    title: '月华初现',
+    description: '获得1朵月华花瓣（变异）',
+    targetPetalType: PetalType.MOONLIGHT_SHIMMER,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.IN_PROGRESS,
+    reward: {
+      type: 'unlock_recipe',
+      recipeId: 'recipe_11',
+      description: '解锁特殊配方：月华融合'
+    },
+    order: 1,
+    unlockHint: '合成月光花瓣时有15%概率变异获得',
+    recommendedRecipes: ['recipe_1', 'recipe_7'],
+    regionSource: '月华台',
+    regionDescription: '月光林地最高处的石台'
+  },
+  {
+    id: 'task_starlight_burst_1',
+    chainId: 'chain_mutation',
+    title: '星爆降临',
+    description: '获得1朵星爆花瓣（变异）',
+    targetPetalType: PetalType.STARLIGHT_BURST,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'unlock_recipe',
+      recipeId: 'recipe_12',
+      description: '解锁特殊配方：星爆结晶'
+    },
+    order: 2,
+    unlockHint: '完成「月华初现」后解锁，合成星光花瓣时变异获得',
+    recommendedRecipes: ['recipe_2'],
+    regionSource: '流星坡',
+    regionDescription: '星辰湖畔的山坡'
+  },
+  {
+    id: 'task_dew_crystal_1',
+    chainId: 'chain_mutation',
+    title: '晶露凝结',
+    description: '获得1朵晶露花瓣（变异）',
+    targetPetalType: PetalType.DEW_CRYSTAL,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DEW_CRYSTAL,
+      count: 1,
+      description: '奖励1朵晶露花瓣'
+    },
+    order: 3,
+    unlockHint: '完成「星爆降临」后解锁，合成露珠花瓣时变异获得',
+    recommendedRecipes: ['recipe_3'],
+    regionSource: '冰晶洞',
+    regionDescription: '晨露山谷深处的洞穴'
+  },
+  {
+    id: 'task_glowing_ember_1',
+    chainId: 'chain_mutation',
+    title: '烬荧闪烁',
+    description: '获得1朵烬荧花瓣（变异）',
+    targetPetalType: PetalType.GLOWING_EMBER,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.GLOWING_EMBER,
+      count: 1,
+      description: '奖励1朵烬荧花瓣'
+    },
+    order: 4,
+    unlockHint: '完成「晶露凝结」后解锁，合成荧光花瓣时变异获得',
+    recommendedRecipes: ['recipe_4'],
+    regionSource: '余烬谷',
+    regionDescription: '荧光洞穴深处的火山遗迹'
+  },
+  {
+    id: 'task_dream_phantom_1',
+    chainId: 'chain_mutation',
+    title: '幻梦虚无',
+    description: '获得1朵幻梦花瓣（变异）',
+    targetPetalType: PetalType.DREAM_PHANTOM,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DREAM_PHANTOM,
+      count: 2,
+      description: '奖励2朵幻梦花瓣'
+    },
+    order: 5,
+    unlockHint: '完成「烬荧闪烁」后解锁，合成梦境花瓣时变异获得',
+    recommendedRecipes: ['recipe_5'],
+    regionSource: '幻影迷宫',
+    regionDescription: '梦境花园深处的迷宫'
+  },
+  {
+    id: 'task_failed_dust_3',
+    chainId: 'chain_failed',
+    title: '幻灭之尘',
+    description: '获得3份幻灭之尘（失败）',
+    targetPetalType: PetalType.FAILED_DUST,
+    targetCount: 3,
+    currentCount: 0,
+    status: CollectionTaskStatus.IN_PROGRESS,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.MOONLIGHT,
+      count: 5,
+      description: '奖励5朵月光花瓣'
+    },
+    order: 1,
+    unlockHint: '合成失败时有概率获得，失败是成功之母',
+    recommendedRecipes: ['recipe_1'],
+    regionSource: '消散之境',
+    regionDescription: '所有失败产物最终消散的虚无空间'
+  },
+  {
+    id: 'task_failed_slime_2',
+    chainId: 'chain_failed',
+    title: '混沌黏液',
+    description: '获得2份混沌黏液（失败）',
+    targetPetalType: PetalType.FAILED_SLIME,
+    targetCount: 2,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.STARLIGHT,
+      count: 3,
+      description: '奖励3朵星光花瓣'
+    },
+    order: 2,
+    unlockHint: '完成「幻灭之尘」后解锁',
+    recommendedRecipes: ['recipe_2'],
+    regionSource: '混沌池',
+    regionDescription: '消散之境中的不稳定能量池'
+  },
+  {
+    id: 'task_failed_ash_2',
+    chainId: 'chain_failed',
+    title: '凋零灰烬',
+    description: '获得2份凋零灰烬（失败）',
+    targetPetalType: PetalType.FAILED_ASH,
+    targetCount: 2,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DEW,
+      count: 2,
+      description: '奖励2朵露珠花瓣'
+    },
+    order: 3,
+    unlockHint: '完成「混沌黏液」后解锁',
+    recommendedRecipes: ['recipe_5'],
+    regionSource: '焚化场',
+    regionDescription: '消散之境中能量完全耗尽的区域'
+  }
+];
+
+export const INITIAL_RED_DOT_STATE: RedDotState = {
+  collectionNewUnlocks: [],
+  claimableTasks: [],
+  claimableChains: [],
+  lastViewedCollection: 0
+};
+
 export const DEFAULT_QUICK_ENTRIES: QuickEntry[] = [
   {
     id: QuickEntryType.SYNTHESIS,
@@ -668,7 +1156,10 @@ export const INITIAL_GAME_STATE: GameState = {
   goals: JSON.parse(JSON.stringify(INITIAL_GOALS)),
   activeStatusMessages: [],
   lastSaveTime: 0,
-  efficiencyBoost: 0
+  efficiencyBoost: 0,
+  collectionTasks: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASKS)),
+  collectionTaskChains: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASK_CHAINS)),
+  redDotState: JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE))
 };
 
 export const INITIAL_TUTORIAL_STATE = {

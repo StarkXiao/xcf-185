@@ -14,14 +14,17 @@ import {
   StatusType,
   QuickEntryType,
   ControlSettings,
-  AudioContextType
+  AudioContextType,
+  CollectionTask,
+  CollectionTaskStatus,
+  CollectionTaskChain
 } from '../types';
 import { 
   PETAL_CONFIGS, 
+  SYNTHESIS_RECIPES,
   GAME_WIDTH, 
   GAME_HEIGHT,
-  DEFAULT_QUICK_ENTRIES,
-  SYNTHESIS_RECIPES
+  DEFAULT_QUICK_ENTRIES
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -32,6 +35,7 @@ import { AudioManager } from '../managers/AudioManager';
 type CollectionCategory = 'normal' | 'mutation' | 'failed';
 type InfoTabType = 'trend' | 'records' | 'goals' | 'shortcuts';
 type SettingsTabType = 'controls' | 'audio';
+type CollectionTabType = 'collection' | 'tasks';
 
 export class UIManager {
   private scene: Phaser.Scene;
@@ -44,7 +48,10 @@ export class UIManager {
   private progressText: Phaser.GameObjects.Text | null = null;
   private toastText: Phaser.GameObjects.Text | null = null;
   private currentCollectionCategory: CollectionCategory = 'normal';
+  private currentCollectionTab: CollectionTabType = 'collection';
   private categoryTabButtons: Phaser.GameObjects.Container[] = [];
+  private collectionSubTabButtons: Phaser.GameObjects.Container[] = [];
+  private detailPanel: Phaser.GameObjects.Container | null = null;
   private uiListeners: Array<{ event: keyof GameEvents; callback: (data: any) => void }> = [];
 
   private infoCenterPanel: Phaser.GameObjects.Container | null = null;
@@ -230,6 +237,8 @@ export class UIManager {
     this.container.add([btnGlow, btnBg, btnText, button]);
   }
 
+  private collectionButtonRedDot: Phaser.GameObjects.Graphics | null = null;
+
   private createCollectionButton(): void {
     if (!this.container) return;
 
@@ -261,7 +270,19 @@ export class UIManager {
     });
     button.on('pointerout', () => btnBg.setScale(1));
 
-    this.container.add([btnBg, btnText, button]);
+    this.collectionButtonRedDot = this.scene.add.graphics();
+    this.collectionButtonRedDot.fillStyle(0xff4444, 1);
+    this.collectionButtonRedDot.fillCircle(btnX + 22, btnY - 22, 8);
+    this.collectionButtonRedDot.setVisible(false);
+
+    this.container.add([btnBg, btnText, button, this.collectionButtonRedDot]);
+    this.updateCollectionRedDot();
+  }
+
+  private updateCollectionRedDot(): void {
+    if (!this.collectionButtonRedDot) return;
+    const hasRedDot = SaveManager.getInstance().hasCollectionRedDots();
+    this.collectionButtonRedDot.setVisible(hasRedDot);
   }
 
   private createMuteButton(): void {
@@ -764,6 +785,28 @@ export class UIManager {
     };
     EventManager.getInstance().on('synthesis:record_added', onSynthesisRecord);
     this.uiListeners.push({ event: 'synthesis:record_added', callback: onSynthesisRecord });
+
+    const onRedDotUpdate = () => {
+      this.updateCollectionRedDot();
+    };
+    EventManager.getInstance().on('reddot:updated', onRedDotUpdate);
+    this.uiListeners.push({ event: 'reddot:updated', callback: onRedDotUpdate });
+
+    const onCollectionTaskProgress = (_data: GameEvents['collectiontask:progress']) => {
+      if (this.collectionPanel) {
+        this.refreshCollectionPanel();
+      }
+    };
+    EventManager.getInstance().on('collectiontask:progress', onCollectionTaskProgress);
+    this.uiListeners.push({ event: 'collectiontask:progress', callback: onCollectionTaskProgress });
+
+    const onCollectionTaskCompleted = (_data: GameEvents['collectiontask:completed']) => {
+      if (this.collectionPanel) {
+        this.refreshCollectionPanel();
+      }
+    };
+    EventManager.getInstance().on('collectiontask:completed', onCollectionTaskCompleted);
+    this.uiListeners.push({ event: 'collectiontask:completed', callback: onCollectionTaskCompleted });
   }
 
   private showToast(message: string, duration: number = 2000, color: number = 0xffffff): void {
@@ -1003,6 +1046,9 @@ export class UIManager {
   private openCollectionPanel(): void {
     if (!this.container) return;
 
+    const state = SaveManager.getInstance().getGameState();
+    SaveManager.getInstance().clearAllCollectionRedDots(state);
+
     this.collectionPanel = this.scene.add.container(0, 0).setDepth(150).setScrollFactor(0);
     
     const panelBg = this.scene.add.graphics();
@@ -1018,21 +1064,7 @@ export class UIManager {
     }).setOrigin(0.5);
     this.collectionPanel.add(title);
 
-    this.createCategoryTabs();
-
-    const state = SaveManager.getInstance().getGameState();
-    const totalTypes = Object.values(PetalType).length;
-    const unlockedCount = state.unlockedPetals.length;
-    const completionText = this.scene.add.text(GAME_WIDTH / 2, 125, 
-      `收集进度: ${unlockedCount}/${totalTypes}`, {
-      fontFamily: 'Arial',
-      fontSize: '14px',
-      color: '#a8e6cf',
-      align: 'center'
-    }).setOrigin(0.5);
-    this.collectionPanel.add(completionText);
-
-    this.renderCollectionItems();
+    this.createCollectionSubTabs();
 
     const closeBtn = this.scene.add.text(GAME_WIDTH - 70, 75, '✕', {
       fontFamily: 'Arial',
@@ -1054,6 +1086,102 @@ export class UIManager {
     this.container.add(this.collectionPanel);
   }
 
+  private createCollectionSubTabs(): void {
+    if (!this.collectionPanel) return;
+
+    const tabs: { key: CollectionTabType; label: string; color: number; icon: string }[] = [
+      { key: 'collection', label: '图鉴', color: 0xa8e6cf, icon: '📖' },
+      { key: 'tasks', label: '收集任务', color: 0xffd93d, icon: '🎯' }
+    ];
+
+    const tabWidth = 300;
+    const tabHeight = 50;
+    const startX = (GAME_WIDTH - tabs.length * tabWidth) / 2;
+    const tabY = 120;
+
+    this.collectionSubTabButtons = [];
+
+    tabs.forEach((tab, index) => {
+      const tabContainer = this.scene.add.container(0, 0);
+      const tabX = startX + index * tabWidth;
+      const isActive = this.currentCollectionTab === tab.key;
+
+      const tabBg = this.scene.add.graphics();
+      tabBg.fillStyle(isActive ? tab.color : 0x1a0a2e, isActive ? 0.9 : 0.5);
+      tabBg.fillRoundedRect(tabX, tabY, tabWidth - 8, tabHeight, 12);
+      tabBg.lineStyle(2, tab.color, isActive ? 0.9 : 0.4);
+      tabBg.strokeRoundedRect(tabX, tabY, tabWidth - 8, tabHeight, 12);
+
+      const iconText = this.scene.add.text(tabX + 25, tabY + tabHeight / 2, tab.icon, {
+        fontFamily: 'Arial',
+        fontSize: '20px'
+      }).setOrigin(0, 0.5);
+
+      const labelText = this.scene.add.text(tabX + (tabWidth - 8) / 2 + 15, tabY + tabHeight / 2, tab.label, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: isActive ? '#ffffff' : `#${tab.color.toString(16).padStart(6, '0')}`,
+        align: 'center'
+      }).setOrigin(0.5);
+
+      const state = SaveManager.getInstance().getGameState();
+      if (tab.key === 'tasks') {
+        const unclaimedCount = state.redDotState.claimableTasks.length + state.redDotState.claimableChains.length;
+        if (unclaimedCount > 0) {
+          const badgeBg = this.scene.add.graphics();
+          badgeBg.fillStyle(0xff4444, 1);
+          badgeBg.fillCircle(tabX + tabWidth - 30, tabY + 12, 12);
+          const badgeText = this.scene.add.text(tabX + tabWidth - 30, tabY + 12, unclaimedCount.toString(), {
+            fontFamily: 'Arial',
+            fontSize: '12px',
+            color: '#ffffff',
+            align: 'center'
+          }).setOrigin(0.5);
+          tabContainer.add([badgeBg, badgeText]);
+        }
+      }
+
+      tabContainer.add([tabBg, iconText, labelText]);
+
+      const zone = this.scene.add.zone(tabX + (tabWidth - 8) / 2, tabY + tabHeight / 2, tabWidth - 8, tabHeight)
+        .setInteractive({ useHandCursor: true });
+
+      zone.on('pointerup', () => {
+        this.currentCollectionTab = tab.key;
+        EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+        this.refreshCollectionPanel();
+      });
+
+      tabContainer.add(zone);
+      this.collectionPanel!.add(tabContainer);
+      this.collectionSubTabButtons.push(tabContainer);
+    });
+
+    if (this.currentCollectionTab === 'collection') {
+      this.createCategoryTabs();
+      this.renderCollectionStats();
+      this.renderCollectionItems();
+    } else {
+      this.renderTaskChains();
+    }
+  }
+
+  private renderCollectionStats(): void {
+    if (!this.collectionPanel) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const totalTypes = Object.values(PetalType).length;
+    const unlockedCount = state.unlockedPetals.length;
+    const completionText = this.scene.add.text(GAME_WIDTH / 2, 230,
+      `收集进度: ${unlockedCount}/${totalTypes}`, {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#a8e6cf',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.collectionPanel.add(completionText);
+  }
+
   private createCategoryTabs(): void {
     if (!this.collectionPanel) return;
 
@@ -1066,7 +1194,7 @@ export class UIManager {
     const tabWidth = 200;
     const tabHeight = 40;
     const startX = (GAME_WIDTH - categories.length * tabWidth) / 2;
-    const tabY = 155;
+    const tabY = 265;
 
     this.categoryTabButtons = [];
 
@@ -1108,13 +1236,15 @@ export class UIManager {
   private refreshCollectionPanel(): void {
     if (!this.collectionPanel) return;
 
-    this.categoryTabButtons.forEach(btn => btn.destroy());
-    this.categoryTabButtons = [];
-    
     const itemsToRemove: Phaser.GameObjects.GameObject[] = [];
     this.collectionPanel.iterate((child) => {
-      if ((child as any)._isCollectionItem) {
-        itemsToRemove.push(child);
+      if ((child as any)._isCollectionItem || child !== this.collectionPanel?.first) {
+        const isStaticBg = (child as any).type === 'Graphics' && (child as any).geometryIndex === 0;
+        const isTitle = (child as any).type === 'Text' && (child as any).x === GAME_WIDTH / 2 && (child as any).y === 85;
+        const isCloseBtn = (child as any).type === 'Text' && (child as any).x === GAME_WIDTH - 70 && (child as any).y === 75;
+        if (!isStaticBg && !isTitle && !isCloseBtn) {
+          itemsToRemove.push(child);
+        }
       }
     });
     itemsToRemove.forEach(item => {
@@ -1122,8 +1252,10 @@ export class UIManager {
       item.destroy();
     });
 
-    this.createCategoryTabs();
-    this.renderCollectionItems();
+    this.categoryTabButtons = [];
+    this.collectionSubTabButtons = [];
+
+    this.createCollectionSubTabs();
   }
 
   private renderCollectionItems(): void {
@@ -1139,7 +1271,7 @@ export class UIManager {
       const col = index % 3;
       const row = Math.floor(index / 3);
       const px = 100 + col * 185;
-      const py = 235 + row * 185;
+      const py = 340 + row * 185;
 
       this.createCollectionItem(type, px, py, state);
     });
@@ -1151,6 +1283,7 @@ export class UIManager {
     const config = PETAL_CONFIGS[type];
     const unlocked = state.unlockedPetals.includes(type);
     const count = state.petals[type] || 0;
+    const isNew = state.redDotState.collectionNewUnlocks.includes(type);
 
     const itemContainer = this.scene.add.container(0, 0);
     (itemContainer as any)._isCollectionItem = true;
@@ -1159,7 +1292,7 @@ export class UIManager {
     const borderColor = unlocked ? config.color : 0x333333;
     itemBg.fillStyle(unlocked ? 0x1a0a2e : 0x0a0a0a, 0.8);
     itemBg.fillRoundedRect(x - 75, y - 85, 150, 170, 15);
-    itemBg.lineStyle(2, borderColor, unlocked ? 0.6 : 0.3);
+    itemBg.lineStyle(isNew ? 4 : 2, isNew ? 0xff4444 : borderColor, isNew ? 1 : (unlocked ? 0.6 : 0.3));
     itemBg.strokeRoundedRect(x - 75, y - 85, 150, 170, 15);
 
     const petalImg = this.scene.add.image(x, y - 25, `petal_${type}`)
@@ -1195,8 +1328,492 @@ export class UIManager {
       itemContainer.add(tagText);
     }
 
+    if (isNew) {
+      const newBadge = this.scene.add.graphics();
+      newBadge.fillStyle(0xff4444, 1);
+      newBadge.fillCircle(x + 55, y - 65, 12);
+      const newText = this.scene.add.text(x + 55, y - 65, '新', {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#ffffff',
+        align: 'center',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      itemContainer.add([newBadge, newText]);
+    }
+
+    if (config.difficulty) {
+      const difficultyColors: Record<string, string> = {
+        easy: '#44dd44',
+        medium: '#ffaa00',
+        hard: '#ff6666',
+        legendary: '#ffd700'
+      };
+      const difficultyLabels: Record<string, string> = {
+        easy: '简单',
+        medium: '中等',
+        hard: '困难',
+        legendary: '传说'
+      };
+      const diffText = this.scene.add.text(x, y - 70, difficultyLabels[config.difficulty], {
+        fontFamily: 'Arial',
+        fontSize: '10px',
+        color: difficultyColors[config.difficulty],
+        align: 'center',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0.5);
+      itemContainer.add(diffText);
+    }
+
     itemContainer.add([itemBg, petalImg, nameText, countText]);
+
+    const hitZone = this.scene.add.zone(x, y, 150, 170)
+      .setInteractive({ useHandCursor: true });
+    hitZone.on('pointerup', () => {
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+      this.openPetalDetail(type);
+      if (isNew) {
+        SaveManager.getInstance().clearCollectionNewUnlockRedDot(state, type);
+        this.refreshCollectionPanel();
+      }
+    });
+    itemContainer.add(hitZone);
+
     this.collectionPanel.add(itemContainer);
+  }
+
+  private openPetalDetail(type: PetalType): void {
+    if (!this.collectionPanel) return;
+    this.closePetalDetail();
+
+    const config = PETAL_CONFIGS[type];
+    const state = SaveManager.getInstance().getGameState();
+    const unlocked = state.unlockedPetals.includes(type);
+
+    this.detailPanel = this.scene.add.container(0, 0).setDepth(200);
+
+    const panelBg = this.scene.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.98);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.detailPanel.add(panelBg);
+
+    const title = this.scene.add.text(GAME_WIDTH / 2, 80, unlocked ? config.name : '???', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.detailPanel.add(title);
+
+    const petalImg = this.scene.add.image(GAME_WIDTH / 2, 160, `petal_${type}`)
+      .setDisplaySize(100, 100)
+      .setBlendMode(unlocked && !config.isFailed ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL)
+      .setAlpha(unlocked ? 1 : 0.2);
+    this.detailPanel.add(petalImg);
+
+    const count = state.petals[type] || 0;
+    const countText = this.scene.add.text(GAME_WIDTH / 2, 230, unlocked ? `拥有数量: ${count}` : '尚未解锁', {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#a8e6cf',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.detailPanel.add(countText);
+
+    if (config.difficulty && unlocked) {
+      const difficultyColors: Record<string, string> = { easy: '#44dd44', medium: '#ffaa00', hard: '#ff6666', legendary: '#ffd700' };
+      const difficultyLabels: Record<string, string> = { easy: '简单', medium: '中等', hard: '困难', legendary: '传说' };
+      const diffText = this.scene.add.text(GAME_WIDTH / 2, 260, `难度: ${difficultyLabels[config.difficulty]}`, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: difficultyColors[config.difficulty],
+        align: 'center'
+      }).setOrigin(0.5);
+      this.detailPanel.add(diffText);
+    }
+
+    const descText = this.scene.add.text(GAME_WIDTH / 2, 300, unlocked ? config.description : '收集后解锁描述', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#cccccc',
+      align: 'center',
+      wordWrap: { width: 500 }
+    }).setOrigin(0.5);
+    this.detailPanel.add(descText);
+
+    let currentY = 350;
+
+    if (config.regionName) {
+      const regionTitle = this.scene.add.text(100, currentY, '📍 区域来源', {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffd93d',
+        align: 'left'
+      });
+      this.detailPanel.add(regionTitle);
+      currentY += 30;
+
+      const regionName = this.scene.add.text(100, currentY, unlocked ? config.regionName : '???', {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: '#ffffff',
+        align: 'left'
+      });
+      this.detailPanel.add(regionName);
+      currentY += 25;
+
+      const regionDesc = this.scene.add.text(100, currentY, unlocked ? config.regionDescription : '解锁后显示区域详情', {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: '#888888',
+        align: 'left',
+        wordWrap: { width: 550 }
+      });
+      this.detailPanel.add(regionDesc);
+      currentY += 25;
+
+      if (config.spawnConditions && unlocked) {
+        const spawnText = this.scene.add.text(100, currentY, `出现条件: ${config.spawnConditions}`, {
+          fontFamily: 'Arial',
+          fontSize: '13px',
+          color: '#a8e6cf',
+          align: 'left',
+          wordWrap: { width: 550 }
+        });
+        this.detailPanel.add(spawnText);
+        currentY += 35;
+      } else {
+        currentY += 10;
+      }
+    }
+
+    if (unlocked && config.recommendedRecipes && config.recommendedRecipes.length > 0) {
+      const recipeTitle = this.scene.add.text(100, currentY, '📜 推荐配方', {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffd93d',
+        align: 'left'
+      });
+      this.detailPanel.add(recipeTitle);
+      currentY += 30;
+
+      config.recommendedRecipes.forEach(recipeId => {
+        const recipe = SYNTHESIS_RECIPES.find((r: any) => r.id === recipeId);
+        if (recipe) {
+          const outputConfig = PETAL_CONFIGS[recipe.output.type];
+          const recipeName = `合成 ${outputConfig.name}`;
+          const recipeText = this.scene.add.text(100, currentY, `• ${recipeName}`, {
+            fontFamily: 'Arial',
+            fontSize: '14px',
+            color: '#a8e6cf',
+            align: 'left'
+          });
+          this.detailPanel.add(recipeText);
+          currentY += 25;
+        }
+      });
+      currentY += 10;
+    }
+
+    if (!unlocked && config.unlockHint) {
+      const hintTitle = this.scene.add.text(100, currentY, '💡 解锁提示', {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffd93d',
+        align: 'left'
+      });
+      this.detailPanel.add(hintTitle);
+      currentY += 30;
+
+      const hintText = this.scene.add.text(100, currentY, config.unlockHint, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#ffaaaa',
+        align: 'left',
+        wordWrap: { width: 550 }
+      });
+      this.detailPanel.add(hintText);
+      currentY += 40;
+    }
+
+    const relatedTasks = state.collectionTasks.filter(t => t.targetPetalType === type);
+    if (relatedTasks.length > 0) {
+      const taskTitle = this.scene.add.text(100, currentY, '🎯 相关任务', {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffd93d',
+        align: 'left'
+      });
+      this.detailPanel.add(taskTitle);
+      currentY += 30;
+
+      relatedTasks.forEach(task => {
+        const statusColors: Record<string, string> = {
+          locked: '#666666',
+          in_progress: '#a8e6cf',
+          completed: '#ffd93d',
+          claimed: '#888888'
+        };
+        const statusLabels: Record<string, string> = {
+          locked: '未解锁',
+          in_progress: '进行中',
+          completed: '已完成',
+          claimed: '已领取'
+        };
+        const taskText = this.scene.add.text(100, currentY, 
+          `• ${task.title} [${task.currentCount}/${task.targetCount}] - ${statusLabels[task.status]}`, {
+          fontFamily: 'Arial',
+          fontSize: '13px',
+          color: statusColors[task.status],
+          align: 'left',
+          wordWrap: { width: 550 }
+        });
+        this.detailPanel.add(taskText);
+        currentY += 25;
+      });
+    }
+
+    const closeBtn = this.scene.add.text(GAME_WIDTH - 70, 70, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '30px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => {
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+      this.closePetalDetail();
+    });
+    this.detailPanel.add(closeBtn);
+
+    const bgZone = this.scene.add.zone(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT)
+      .setInteractive();
+    bgZone.on('pointerup', () => {
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+      this.closePetalDetail();
+    });
+    this.detailPanel.addAt(bgZone, 0);
+
+    this.collectionPanel.add(this.detailPanel);
+  }
+
+  private closePetalDetail(): void {
+    if (this.detailPanel && this.collectionPanel) {
+      this.collectionPanel.remove(this.detailPanel);
+      this.detailPanel.destroy();
+      this.detailPanel = null;
+    }
+  }
+
+  private renderTaskChains(): void {
+    if (!this.collectionPanel) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const chains = state.collectionTaskChains;
+    let currentY = 200;
+
+    chains.forEach((chain, chainIndex) => {
+      const chainBg = this.scene.add.graphics();
+      chainBg.fillStyle(0x1a0a2e, 0.8);
+      chainBg.fillRoundedRect(60, currentY, GAME_WIDTH - 120, 90, 15);
+      chainBg.lineStyle(2, chain.color, 0.6);
+      chainBg.strokeRoundedRect(60, currentY, GAME_WIDTH - 120, 90, 15);
+
+      const iconText = this.scene.add.text(90, currentY + 45, chain.icon, {
+        fontFamily: 'Arial',
+        fontSize: '32px'
+      });
+
+      const titleText = this.scene.add.text(150, currentY + 25, chain.title, {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#ffffff',
+        align: 'left'
+      });
+
+      const descText = this.scene.add.text(150, currentY + 55, chain.description, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: '#aaaaaa',
+        align: 'left',
+        wordWrap: { width: 380 }
+      });
+
+      const tasks = state.collectionTasks.filter(t => t.chainId === chain.id);
+      const completedCount = tasks.filter(t => t.status === 'completed' || t.status === 'claimed').length;
+      const progressText = this.scene.add.text(GAME_WIDTH - 180, currentY + 35, 
+        `${completedCount}/${tasks.length}`, {
+        fontFamily: 'Arial',
+        fontSize: '20px',
+        color: `#${chain.color.toString(16).padStart(6, '0')}`,
+        align: 'right'
+      });
+
+      const progressBarBg = this.scene.add.graphics();
+      progressBarBg.fillStyle(0x333333, 0.5);
+      progressBarBg.fillRoundedRect(GAME_WIDTH - 280, currentY + 60, 120, 8, 4);
+      
+      const progressBarFill = this.scene.add.graphics();
+      const progress = completedCount / tasks.length;
+      progressBarFill.fillStyle(chain.color, 0.8);
+      progressBarFill.fillRoundedRect(GAME_WIDTH - 280, currentY + 60, 120 * progress, 8, 4);
+
+      const chainRewardBg = this.scene.add.graphics();
+      chainRewardBg.fillStyle(0x000000, 0.3);
+      chainRewardBg.fillRoundedRect(GAME_WIDTH - 100, currentY + 25, 30, 30, 8);
+      chainRewardBg.lineStyle(1, 0xffd700, 0.6);
+      chainRewardBg.strokeRoundedRect(GAME_WIDTH - 100, currentY + 25, 30, 30, 8);
+
+      const chainRewardIcon = this.scene.add.text(GAME_WIDTH - 85, currentY + 40, '🎁', {
+        fontFamily: 'Arial',
+        fontSize: '18px'
+      }).setOrigin(0.5);
+
+      this.collectionPanel.add([chainBg, iconText, titleText, descText, progressText, 
+        progressBarBg, progressBarFill, chainRewardBg, chainRewardIcon]);
+
+      if (state.redDotState.claimableChains.includes(chain.id)) {
+        const chainBadge = this.scene.add.graphics();
+        chainBadge.fillStyle(0xff4444, 1);
+        chainBadge.fillCircle(GAME_WIDTH - 90, currentY + 15, 10);
+        this.collectionPanel.add(chainBadge);
+      }
+
+      const chainHitZone = this.scene.add.zone(GAME_WIDTH - 85, currentY + 40, 30, 30)
+        .setInteractive({ useHandCursor: true });
+      chainHitZone.on('pointerup', () => {
+        EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+        if (chain.isChainComplete && !chain.chainClaimed) {
+          SaveManager.getInstance().claimCollectionChain(chain.id);
+          this.refreshCollectionPanel();
+        } else if (!chain.isChainComplete) {
+          this.showToast('完成所有任务后可领取链奖励', 2000, 0xffd93d);
+        } else {
+          this.showToast('已领取过该链奖励', 2000, 0x888888);
+        }
+      });
+      this.collectionPanel.add(chainHitZone);
+
+      currentY += 110;
+
+      tasks.forEach(task => {
+        const taskBg = this.scene.add.graphics();
+        const isLocked = task.status === 'locked';
+        const isCompleted = task.status === 'completed';
+        const isClaimed = task.status === 'claimed';
+        
+        const bgColor = isLocked ? 0x0a0a0a : 0x1a0a2e;
+        const borderColor = isLocked ? 0x333333 : (isCompleted || isClaimed ? chain.color : 0x555555);
+        taskBg.fillStyle(bgColor, 0.6);
+        taskBg.fillRoundedRect(90, currentY, GAME_WIDTH - 180, 70, 10);
+        taskBg.lineStyle(2, borderColor, isLocked ? 0.3 : 0.6);
+        taskBg.strokeRoundedRect(90, currentY, GAME_WIDTH - 180, 70, 10);
+
+        const orderText = this.scene.add.text(120, currentY + 35, `#${task.order}`, {
+          fontFamily: 'Arial',
+          fontSize: '16px',
+          color: isLocked ? '#444444' : `#${chain.color.toString(16).padStart(6, '0')}`,
+          align: 'center'
+        });
+
+        const taskTitle = this.scene.add.text(160, currentY + 18, task.title, {
+          fontFamily: 'Arial',
+          fontSize: '15px',
+          color: isLocked ? '#666666' : '#ffffff',
+          align: 'left'
+        });
+
+        const taskDesc = this.scene.add.text(160, currentY + 42, task.description, {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: isLocked ? '#444444' : '#aaaaaa',
+          align: 'left'
+        });
+
+        const progressText = this.scene.add.text(GAME_WIDTH - 220, currentY + 25,
+          `${task.currentCount}/${task.targetCount}`, {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: isLocked ? '#444444' : '#a8e6cf',
+          align: 'right'
+        });
+
+        const rewardText = this.scene.add.text(GAME_WIDTH - 220, currentY + 48, task.reward.description, {
+          fontFamily: 'Arial',
+          fontSize: '11px',
+          color: isLocked ? '#444444' : '#ffd93d',
+          align: 'right'
+        });
+
+        let btnText = '';
+        let btnColor = 0x555555;
+        let btnEnabled = false;
+
+        if (isLocked) {
+          btnText = '🔒';
+          btnColor = 0x333333;
+        } else if (isClaimed) {
+          btnText = '✓';
+          btnColor = 0x555555;
+        } else if (isCompleted) {
+          btnText = '领取';
+          btnColor = chain.color;
+          btnEnabled = true;
+        } else {
+          btnText = '...';
+          btnColor = 0x555555;
+        }
+
+        const claimBtnBg = this.scene.add.graphics();
+        claimBtnBg.fillStyle(btnColor, btnEnabled ? 0.9 : 0.3);
+        claimBtnBg.fillRoundedRect(GAME_WIDTH - 140, currentY + 15, 60, 40, 8);
+        if (btnEnabled) {
+          claimBtnBg.lineStyle(2, 0xffffff, 0.5);
+          claimBtnBg.strokeRoundedRect(GAME_WIDTH - 140, currentY + 15, 60, 40, 8);
+        }
+
+        const claimBtnText = this.scene.add.text(GAME_WIDTH - 110, currentY + 35, btnText, {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: '#ffffff',
+          align: 'center'
+        }).setOrigin(0.5);
+
+        this.collectionPanel.add([taskBg, orderText, taskTitle, taskDesc, progressText, 
+          rewardText, claimBtnBg, claimBtnText]);
+
+        if (state.redDotState.claimableTasks.includes(task.id)) {
+          const taskBadge = this.scene.add.graphics();
+          taskBadge.fillStyle(0xff4444, 1);
+          taskBadge.fillCircle(GAME_WIDTH - 95, currentY + 12, 10);
+          this.collectionPanel.add(taskBadge);
+        }
+
+        if (btnEnabled) {
+          const hitZone = this.scene.add.zone(GAME_WIDTH - 110, currentY + 35, 60, 40)
+            .setInteractive({ useHandCursor: true });
+          hitZone.on('pointerup', () => {
+            EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+            SaveManager.getInstance().claimCollectionTask(task.id);
+            this.refreshCollectionPanel();
+          });
+          this.collectionPanel.add(hitZone);
+        }
+
+        currentY += 85;
+      });
+
+      if (chainIndex < chains.length - 1) {
+        const divider = this.scene.add.graphics();
+        divider.lineStyle(1, 0x333333, 0.5);
+        divider.beginPath();
+        divider.moveTo(60, currentY - 30);
+        divider.lineTo(GAME_WIDTH - 60, currentY - 30);
+        divider.strokePath();
+        this.collectionPanel.add(divider);
+        currentY += 10;
+      }
+    });
   }
 
   private closeCollectionPanel(): void {
@@ -1212,6 +1829,8 @@ export class UIManager {
           this.collectionPanel.destroy();
           this.collectionPanel = null;
           this.categoryTabButtons = [];
+          this.collectionSubTabButtons = [];
+          this.detailPanel = null;
         }
       }
     });

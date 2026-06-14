@@ -21,7 +21,10 @@ import {
   SaveValidationResult,
   SaveBackupInfo,
   MigrationResult,
-  SaveBackupData
+  SaveBackupData,
+  CollectionTask,
+  CollectionTaskStatus,
+  CollectionTaskChain
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -48,7 +51,10 @@ import {
   AUTO_BACKUP_KEY,
   MAX_BACKUP_COUNT,
   MAX_AUTO_BACKUP_COUNT,
-  AUTO_BACKUP_INTERVAL
+  AUTO_BACKUP_INTERVAL,
+  INITIAL_COLLECTION_TASKS,
+  INITIAL_COLLECTION_TASK_CHAINS,
+  INITIAL_RED_DOT_STATE
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -172,6 +178,9 @@ export class SaveManager {
     }
     const unlockedRecipes = oldState.unlockedRecipes || this.computeUnlockedRecipes(migratedPetals as Record<PetalType, number>);
     const migratedGoals = this.migrateGoals(oldState.goals, migratedPetals as Record<PetalType, number>);
+    const migratedCollectionTasks = oldState.collectionTasks || JSON.parse(JSON.stringify(initialState.collectionTasks));
+    const migratedCollectionTaskChains = oldState.collectionTaskChains || JSON.parse(JSON.stringify(initialState.collectionTaskChains));
+    const migratedRedDotState = oldState.redDotState || JSON.parse(JSON.stringify(initialState.redDotState));
     return {
       ...saveData,
       gameState: {
@@ -188,7 +197,10 @@ export class SaveManager {
         synthesisRecords: oldState.synthesisRecords || [],
         goals: migratedGoals,
         activeStatusMessages: oldState.activeStatusMessages || [],
-        lastSaveTime: oldState.lastSaveTime || 0
+        lastSaveTime: oldState.lastSaveTime || 0,
+        collectionTasks: migratedCollectionTasks,
+        collectionTaskChains: migratedCollectionTaskChains,
+        redDotState: migratedRedDotState
       }
     };
   }
@@ -373,10 +385,12 @@ export class SaveManager {
       state.unlockedPetals.push(type);
       const config = this.getPetalCategory(type);
       EventManager.getInstance().emit('collection:unlock', { type, category: config });
+      this.addNewUnlockRedDot(state, type);
     }
 
     this.checkRecipeUnlocks(state);
     this.updateGoalsForPetalCollection(state, type, count);
+    this.updateCollectionTasksForPetal(state, type, count);
     if (!wasUnlocked) {
       this.updateGoalsForPetalUnlock(state, type);
     }
@@ -419,6 +433,7 @@ export class SaveManager {
     if (!wasUnlocked) {
       state.unlockedPetals.push(type);
       EventManager.getInstance().emit('collection:unlock', { type, category: 'mutation' });
+      this.addNewUnlockRedDot(state, type);
     }
     if (!state.discoveredMutations.includes(type)) {
       state.discoveredMutations.push(type);
@@ -426,6 +441,7 @@ export class SaveManager {
 
     this.checkRecipeUnlocks(state);
     this.updateGoalsForPetalCollection(state, type, count);
+    this.updateCollectionTasksForPetal(state, type, count);
     if (!wasUnlocked) {
       this.updateGoalsForPetalUnlock(state, type);
     }
@@ -439,13 +455,17 @@ export class SaveManager {
     state.petals[type] = (state.petals[type] || 0) + count;
     state.totalFailures += 1;
 
-    if (!state.unlockedPetals.includes(type)) {
+    let wasUnlocked = state.unlockedPetals.includes(type);
+    if (!wasUnlocked) {
       state.unlockedPetals.push(type);
       EventManager.getInstance().emit('collection:unlock', { type, category: 'failed' });
+      this.addNewUnlockRedDot(state, type);
     }
     if (!state.discoveredFailures.includes(type)) {
       state.discoveredFailures.push(type);
     }
+
+    this.updateCollectionTasksForPetal(state, type, count);
 
     this.saveGame(state);
     return state;
@@ -759,6 +779,282 @@ export class SaveManager {
     EventManager.getInstance().emit('goal:claimed', { goal: state.goals[goalIndex] });
     this.saveGame(state);
     return state;
+  }
+
+  // === Collection Task Chain System ===
+
+  private updateCollectionTasksForPetal(state: GameState, type: PetalType, count: number): void {
+    state.collectionTasks.forEach((task, index) => {
+      if (task.status === CollectionTaskStatus.LOCKED || 
+          task.status === CollectionTaskStatus.COMPLETED ||
+          task.status === CollectionTaskStatus.CLAIMED) {
+        return;
+      }
+
+      if (task.targetPetalType === type) {
+        const newCount = Math.min(task.currentCount + count, task.targetCount);
+        const wasCompleted = task.currentCount >= task.targetCount;
+        const isNowCompleted = newCount >= task.targetCount;
+
+        state.collectionTasks[index] = {
+          ...task,
+          currentCount: newCount,
+          status: isNowCompleted ? CollectionTaskStatus.COMPLETED : CollectionTaskStatus.IN_PROGRESS
+        };
+
+        EventManager.getInstance().emit('collectiontask:progress', {
+          taskId: task.id,
+          current: newCount,
+          target: task.targetCount
+        });
+
+        if (isNowCompleted && !wasCompleted) {
+          EventManager.getInstance().emit('collectiontask:completed', { 
+            task: state.collectionTasks[index] 
+          });
+          this.addClaimableTaskRedDot(state, task.id);
+          this.showStatusMessage(
+            state,
+            StatusType.SUCCESS,
+            '🎯 收集任务完成',
+            `${task.title} - ${task.description}`,
+            4000
+          );
+          this.checkTaskUnlock(state, task.chainId, task.order);
+        }
+      }
+    });
+
+    this.checkChainCompletion(state);
+  }
+
+  private checkTaskUnlock(state: GameState, chainId: string, completedOrder: number): void {
+    const chain = state.collectionTaskChains.find(c => c.id === chainId);
+    if (!chain) return;
+
+    const nextTaskId = chain.tasks.find((taskId, idx) => {
+      const task = state.collectionTasks.find(t => t.id === taskId);
+      return task && task.order === completedOrder + 1 && 
+             task.status === CollectionTaskStatus.LOCKED;
+    });
+
+    if (nextTaskId) {
+      const taskIndex = state.collectionTasks.findIndex(t => t.id === nextTaskId);
+      if (taskIndex !== -1) {
+        state.collectionTasks[taskIndex] = {
+          ...state.collectionTasks[taskIndex],
+          status: CollectionTaskStatus.IN_PROGRESS
+        };
+        const task = state.collectionTasks[taskIndex];
+        this.showStatusMessage(
+          state,
+          StatusType.INFO,
+          '🔓 新任务解锁',
+          `${task.title} - ${task.description}`,
+          3500
+        );
+      }
+    }
+  }
+
+  private checkChainCompletion(state: GameState): void {
+    state.collectionTaskChains.forEach((chain, chainIndex) => {
+      if (chain.isChainComplete) return;
+
+      const allTasksCompleted = chain.tasks.every(taskId => {
+        const task = state.collectionTasks.find(t => t.id === taskId);
+        return task && (task.status === CollectionTaskStatus.COMPLETED || 
+                       task.status === CollectionTaskStatus.CLAIMED);
+      });
+
+      if (allTasksCompleted) {
+        state.collectionTaskChains[chainIndex] = {
+          ...chain,
+          isChainComplete: true
+        };
+        EventManager.getInstance().emit('collectionchain:completed', { 
+          chain: state.collectionTaskChains[chainIndex] 
+        });
+        this.addClaimableChainRedDot(state, chain.id);
+        this.showStatusMessage(
+          state,
+          StatusType.SUCCESS,
+          '🏆 收集链完成',
+          `${chain.icon} ${chain.title} - 全部任务完成！`,
+          5000
+        );
+      }
+    });
+  }
+
+  public claimCollectionTask(taskId: string): GameState {
+    const state = this.getGameState();
+    const taskIndex = state.collectionTasks.findIndex(t => t.id === taskId);
+    if (taskIndex === -1) return state;
+
+    const task = state.collectionTasks[taskIndex];
+    if (task.status !== CollectionTaskStatus.COMPLETED) return state;
+
+    state.collectionTasks[taskIndex] = { ...task, status: CollectionTaskStatus.CLAIMED };
+    this.applyTaskReward(state, task);
+    this.removeClaimableTaskRedDot(state, taskId);
+
+    EventManager.getInstance().emit('collectiontask:claimed', { 
+      task: state.collectionTasks[taskIndex] 
+    });
+
+    this.showStatusMessage(
+      state,
+      StatusType.SUCCESS,
+      '🎁 奖励已领取',
+      task.reward.description,
+      3000
+    );
+
+    this.saveGame(state);
+    return state;
+  }
+
+  public claimCollectionChain(chainId: string): GameState {
+    const state = this.getGameState();
+    const chainIndex = state.collectionTaskChains.findIndex(c => c.id === chainId);
+    if (chainIndex === -1) return state;
+
+    const chain = state.collectionTaskChains[chainIndex];
+    if (!chain.isChainComplete || chain.chainClaimed) return state;
+
+    state.collectionTaskChains[chainIndex] = { ...chain, chainClaimed: true };
+    if (chain.chainReward) {
+      this.applyTaskReward(state, chain.chainReward);
+    }
+    this.removeClaimableChainRedDot(state, chainId);
+
+    EventManager.getInstance().emit('collectionchain:claimed', { 
+      chain: state.collectionTaskChains[chainIndex] 
+    });
+
+    this.showStatusMessage(
+      state,
+      StatusType.SUCCESS,
+      '🏆 收集链奖励已领取',
+      chain.chainReward?.description || '恭喜完成全部收集！',
+      4000
+    );
+
+    this.saveGame(state);
+    return state;
+  }
+
+  private applyTaskReward(state: GameState, reward: any): void {
+    switch (reward.type) {
+      case 'petal':
+        if (reward.petalType && reward.count) {
+          state.petals[reward.petalType] = (state.petals[reward.petalType] || 0) + reward.count;
+          state.totalCollected += reward.count;
+          EventManager.getInstance().emit('petal:collected', { 
+            type: reward.petalType, 
+            count: reward.count 
+          });
+        }
+        break;
+      case 'unlock_recipe':
+        if (reward.recipeId && !state.unlockedRecipes.includes(reward.recipeId)) {
+          state.unlockedRecipes.push(reward.recipeId);
+          EventManager.getInstance().emit('synthesis:recipe_unlocked', { 
+            recipeId: reward.recipeId 
+          });
+        }
+        break;
+      case 'goal_progress':
+        state.goals.forEach((goal, idx) => {
+          if (goal.status === GoalStatus.PENDING || goal.status === GoalStatus.IN_PROGRESS) {
+            const bonus = Math.floor(goal.targetCount * 0.1);
+            const newCount = Math.min(goal.currentCount + bonus, goal.targetCount);
+            state.goals[idx] = {
+              ...goal,
+              currentCount: newCount,
+              status: newCount >= goal.targetCount ? GoalStatus.COMPLETED : goal.status
+            };
+          }
+        });
+        break;
+    }
+  }
+
+  // === Red Dot System ===
+
+  private addNewUnlockRedDot(state: GameState, type: PetalType): void {
+    if (!state.redDotState.collectionNewUnlocks.includes(type)) {
+      state.redDotState.collectionNewUnlocks.push(type);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private addClaimableTaskRedDot(state: GameState, taskId: string): void {
+    if (!state.redDotState.claimableTasks.includes(taskId)) {
+      state.redDotState.claimableTasks.push(taskId);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private addClaimableChainRedDot(state: GameState, chainId: string): void {
+    if (!state.redDotState.claimableChains.includes(chainId)) {
+      state.redDotState.claimableChains.push(chainId);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private removeClaimableTaskRedDot(state: GameState, taskId: string): void {
+    const idx = state.redDotState.claimableTasks.indexOf(taskId);
+    if (idx !== -1) {
+      state.redDotState.claimableTasks.splice(idx, 1);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private removeClaimableChainRedDot(state: GameState, chainId: string): void {
+    const idx = state.redDotState.claimableChains.indexOf(chainId);
+    if (idx !== -1) {
+      state.redDotState.claimableChains.splice(idx, 1);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  public clearCollectionNewUnlockRedDot(state: GameState, type: PetalType): void {
+    const idx = state.redDotState.collectionNewUnlocks.indexOf(type);
+    if (idx !== -1) {
+      state.redDotState.collectionNewUnlocks.splice(idx, 1);
+      EventManager.getInstance().emit('reddot:updated', {});
+      this.saveGame(state);
+    }
+  }
+
+  public clearAllCollectionRedDots(state: GameState): void {
+    state.redDotState.collectionNewUnlocks = [];
+    state.redDotState.lastViewedCollection = Date.now();
+    EventManager.getInstance().emit('reddot:updated', {});
+    this.saveGame(state);
+  }
+
+  public hasCollectionRedDots(): boolean {
+    const state = this.getGameState();
+    return state.redDotState.collectionNewUnlocks.length > 0 ||
+           state.redDotState.claimableTasks.length > 0 ||
+           state.redDotState.claimableChains.length > 0;
+  }
+
+  public getCollectionTasks(): CollectionTask[] {
+    return this.getGameState().collectionTasks;
+  }
+
+  public getCollectionTaskChains(): CollectionTaskChain[] {
+    return this.getGameState().collectionTaskChains;
+  }
+
+  public getTasksByChainId(chainId: string): CollectionTask[] {
+    return this.getGameState().collectionTasks
+      .filter(t => t.chainId === chainId)
+      .sort((a, b) => a.order - b.order);
   }
 
   // === Status Messages ===
@@ -1203,6 +1499,24 @@ export class SaveManager {
     if (state.activeStatusMessages && state.activeStatusMessages.length > MAX_STATUS_MESSAGES) {
       warnings.push(`状态消息超过上限，已裁剪`);
       state.activeStatusMessages = state.activeStatusMessages.slice(-MAX_STATUS_MESSAGES);
+      fixed = true;
+    }
+
+    if (!state.collectionTasks || !Array.isArray(state.collectionTasks)) {
+      warnings.push('collectionTasks 数据异常，已重置');
+      state.collectionTasks = JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASKS));
+      fixed = true;
+    }
+
+    if (!state.collectionTaskChains || !Array.isArray(state.collectionTaskChains)) {
+      warnings.push('collectionTaskChains 数据异常，已重置');
+      state.collectionTaskChains = JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASK_CHAINS));
+      fixed = true;
+    }
+
+    if (!state.redDotState) {
+      warnings.push('redDotState 数据异常，已重置');
+      state.redDotState = JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE));
       fixed = true;
     }
 

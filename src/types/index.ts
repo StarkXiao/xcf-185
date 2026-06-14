@@ -130,6 +130,12 @@ export interface PetalConfig {
   isMutation?: boolean;
   isFailed?: boolean;
   category: 'normal' | 'mutation' | 'failed';
+  regionName?: string;
+  regionDescription?: string;
+  spawnConditions?: string;
+  recommendedRecipes?: string[];
+  unlockHint?: string;
+  difficulty?: 'easy' | 'medium' | 'hard' | 'legendary';
 }
 
 export interface MutationOutcome {
@@ -178,6 +184,9 @@ export interface GameState {
   activeStatusMessages: StatusMessage[];
   lastSaveTime: number;
   efficiencyBoost?: number;
+  collectionTasks: CollectionTask[];
+  collectionTaskChains: CollectionTaskChain[];
+  redDotState: RedDotState;
 }
 
 export interface AudioContextPreferences {
@@ -380,6 +389,66 @@ export interface SaveBackupData {
   label?: string;
 }
 
+export enum CollectionTaskStatus {
+  LOCKED = 'locked',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  CLAIMED = 'claimed'
+}
+
+export interface TaskReward {
+  type: 'petal' | 'goal_progress' | 'unlock_recipe';
+  petalType?: PetalType;
+  count?: number;
+  recipeId?: string;
+  description: string;
+}
+
+export interface CollectionTask {
+  id: string;
+  chainId: string;
+  title: string;
+  description: string;
+  targetPetalType: PetalType;
+  targetCount: number;
+  currentCount: number;
+  status: CollectionTaskStatus;
+  reward: TaskReward;
+  order: number;
+  unlockHint: string;
+  recommendedRecipes: string[];
+  regionSource: string;
+  regionDescription: string;
+}
+
+export interface CollectionTaskChain {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  color: number;
+  tasks: string[];
+  category: 'normal' | 'mutation' | 'failed';
+  chainReward?: TaskReward;
+  isChainComplete: boolean;
+  chainClaimed: boolean;
+}
+
+export interface PetalRegionInfo {
+  petalType: PetalType;
+  regionName: string;
+  regionDescription: string;
+  spawnConditions: string;
+  difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
+}
+
+export interface RedDotState {
+  collectionNewUnlocks: PetalType[];
+  claimableTasks: string[];
+  claimableChains: string[];
+  lastViewedCollection: number;
+}
+
 export interface GameEvents {
   'petal:collected': { type: PetalType; count: number };
   'petal:spawned': { type: PetalType; x: number; y: number };
@@ -417,4 +486,10 @@ export interface GameEvents {
   'save:validation_warning': { result: SaveValidationResult };
   'save:migration_completed': { result: MigrationResult };
   'save:error': { message: string };
+  'collectiontask:progress': { taskId: string; current: number; target: number };
+  'collectiontask:completed': { task: CollectionTask };
+  'collectiontask:claimed': { task: CollectionTask };
+  'collectionchain:completed': { chain: CollectionTaskChain };
+  'collectionchain:claimed': { chain: CollectionTaskChain };
+  'reddot:updated': {};
 }
