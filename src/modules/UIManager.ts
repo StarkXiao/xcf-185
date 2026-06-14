@@ -680,11 +680,26 @@ export class UIManager {
   }
 
   private setupEventListeners(): void {
-    const onCollected = ({ type, count }: GameEvents['petal:collected']) => {
+    const onCollected = (data: GameEvents['petal:collected']) => {
       this.updateUI();
+      const { type, count, heatBonus, decayPenalty, consecutiveCount, collectBonus } = data;
       const config = PETAL_CONFIGS[type];
       const prefix = config.isMutation ? '✨ ' : config.isFailed ? '💨 ' : '';
-      this.showToast(`${prefix}+${count} ${config.name}`);
+      
+      let bonusText = '';
+      if (collectBonus && collectBonus.trim()) {
+        bonusText = ` ${collectBonus}`;
+      }
+      
+      let toastMessage = `${prefix}+${count} ${config.name}${bonusText}`;
+      
+      if (consecutiveCount && consecutiveCount >= 3) {
+        toastMessage += ` (${consecutiveCount}连采)`;
+      }
+      
+      const toastColor = heatBonus && heatBonus > 30 ? 0xffdd00 : (decayPenalty && decayPenalty > 20 ? 0xff6b6b : 0xffffff);
+      
+      this.showToast(toastMessage, 2200, toastColor);
     };
     EventManager.getInstance().on('petal:collected', onCollected);
     this.uiListeners.push({ event: 'petal:collected', callback: onCollected });

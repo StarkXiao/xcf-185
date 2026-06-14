@@ -187,6 +187,8 @@ export interface GameState {
   collectionTasks: CollectionTask[];
   collectionTaskChains: CollectionTaskChain[];
   redDotState: RedDotState;
+  regionHeats: RegionHeat[];
+  consecutiveCollect: ConsecutiveCollect | null;
 }
 
 export interface AudioContextPreferences {
@@ -210,6 +212,44 @@ export interface PetalObject extends Phaser.Physics.Arcade.Sprite {
   petalType: PetalType;
   isCollecting: boolean;
   floatOffset: number;
+  regionId?: string;
+  spawnTime?: number;
+  heatBonus?: number;
+  decayPenalty?: number;
+}
+
+export interface Region {
+  id: string;
+  name: string;
+  description: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  preferredPetals: PetalType[];
+  baseHeat: number;
+  color: number;
+}
+
+export interface RegionHeat {
+  regionId: string;
+  currentHeat: number;
+  lastCollectTime: number;
+  collectCount: number;
+}
+
+export interface ConsecutiveCollect {
+  petalType: PetalType;
+  count: number;
+  lastCollectTime: number;
+  currentDecay: number;
+}
+
+export interface SpawnAdjustment {
+  type: PetalType;
+  heatMultiplier: number;
+  decayMultiplier: number;
+  finalWeight: number;
 }
 
 export interface SynthesisResultData {
@@ -221,8 +261,23 @@ export interface SynthesisResultData {
 }
 
 export interface GameEvents {
-  'petal:collected': { type: PetalType; count: number };
-  'petal:spawned': { type: PetalType; x: number; y: number };
+  'petal:collected': { 
+    type: PetalType; 
+    count: number;
+    regionId?: string;
+    heatBonus?: number;
+    decayPenalty?: number;
+    consecutiveCount?: number;
+    collectBonus?: string;
+  };
+  'petal:spawned': { 
+    type: PetalType; 
+    x: number; 
+    y: number;
+    regionId?: string;
+    heatBonus?: number;
+    decayPenalty?: number;
+  };
   'synthesis:start': { recipeId: string };
   'synthesis:complete': SynthesisResultData;
   'synthesis:mutation': SynthesisResultData;
@@ -450,8 +505,23 @@ export interface RedDotState {
 }
 
 export interface GameEvents {
-  'petal:collected': { type: PetalType; count: number };
-  'petal:spawned': { type: PetalType; x: number; y: number };
+  'petal:collected': { 
+    type: PetalType; 
+    count: number;
+    regionId?: string;
+    heatBonus?: number;
+    decayPenalty?: number;
+    consecutiveCount?: number;
+    collectBonus?: string;
+  };
+  'petal:spawned': { 
+    type: PetalType; 
+    x: number; 
+    y: number;
+    regionId?: string;
+    heatBonus?: number;
+    decayPenalty?: number;
+  };
   'synthesis:start': { recipeId: string };
   'synthesis:complete': SynthesisResultData;
   'synthesis:mutation': SynthesisResultData;

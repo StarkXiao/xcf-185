@@ -1,11 +1,15 @@
 import Phaser from 'phaser';
-import { PetalType, PetalObject } from '../types';
+import { PetalType, PetalObject, Region, RegionHeat, ConsecutiveCollect, SpawnAdjustment } from '../types';
 import { 
   PETAL_CONFIGS, 
   PETAL_SPAWN_INTERVAL, 
   MAX_PETALS_ON_SCREEN,
   WORLD_WIDTH,
-  WORLD_HEIGHT
+  WORLD_HEIGHT,
+  REGIONS,
+  HEAT_CONFIG,
+  DECAY_CONFIG,
+  BALANCE_CONFIG
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -22,6 +26,12 @@ export class PetalSystem {
   private player: Phaser.Physics.Arcade.Sprite | null = null;
   private manualCollectRange: number = 150;
   private efficiencyBoost: number = 0;
+  private heatDecayTimer: number = 0;
+  private decayRecoveryTimer: number = 0;
+  private regionVisuals: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private heatIndicator: Phaser.GameObjects.Text | null = null;
+  private decayIndicator: Phaser.GameObjects.Text | null = null;
+  private currentSpawnAdjustments: SpawnAdjustment[] = [];
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -47,6 +57,8 @@ export class PetalSystem {
     });
 
     this.createCollectParticles();
+    this.createRegionVisuals();
+    this.createStatusIndicators();
     this.spawnInitialPetals();
     this.setupSettingsListener();
     this.setupManualCollectInput();
@@ -101,6 +113,290 @@ export class PetalSystem {
       ease: 'Cubic.Out',
       onComplete: () => hint.destroy()
     });
+  }
+
+  private createRegionVisuals(): void {
+    REGIONS.forEach(region => {
+      const graphics = this.scene.add.graphics();
+      graphics.setDepth(5);
+      graphics.setAlpha(0.15);
+      
+      const r = (region.color >> 16) & 255;
+      const g = (region.color >> 8) & 255;
+      const b = region.color & 255;
+      
+      graphics.fillStyle(region.color, 0.15);
+      graphics.fillRoundedRect(region.x, region.y, region.width, region.height, 20);
+      graphics.lineStyle(2, region.color, 0.3);
+      graphics.strokeRoundedRect(region.x, region.y, region.width, region.height, 20);
+      
+      const label = this.scene.add.text(
+        region.x + region.width / 2,
+        region.y + 25,
+        region.name,
+        {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: `rgb(${r}, ${g}, ${b})`,
+          align: 'center'
+        }
+      ).setOrigin(0.5).setDepth(6).setAlpha(0.6);
+      
+      this.regionVisuals.set(region.id, graphics);
+    });
+  }
+
+  private createStatusIndicators(): void {
+    this.heatIndicator = this.scene.add.text(20, 200, '', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#ffd93d',
+      align: 'left',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setDepth(100).setScrollFactor(0).setAlpha(0.9);
+
+    this.decayIndicator = this.scene.add.text(20, 220, '', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#ff6b6b',
+      align: 'left',
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setDepth(100).setScrollFactor(0).setAlpha(0.9);
+  }
+
+  private getRegionAtPosition(x: number, y: number): Region | null {
+    for (const region of REGIONS) {
+      if (x >= region.x && x <= region.x + region.width &&
+          y >= region.y && y <= region.y + region.height) {
+        return region;
+      }
+    }
+    return null;
+  }
+
+  private updateRegionHeat(regionId: string, isCollect: boolean = true): void {
+    const state = SaveManager.getInstance().getGameState();
+    const regionHeat = state.regionHeats.find(r => r.regionId === regionId);
+    
+    if (!regionHeat) return;
+
+    if (isCollect) {
+      regionHeat.currentHeat = Math.min(
+        HEAT_CONFIG.maxHeat,
+        regionHeat.currentHeat + HEAT_CONFIG.heatIncreasePerCollect
+      );
+      regionHeat.collectCount++;
+      regionHeat.lastCollectTime = Date.now();
+    }
+
+    this.updateRegionVisual(regionId, regionHeat.currentHeat);
+  }
+
+  private updateRegionVisual(regionId: string, heat: number): void {
+    const graphics = this.regionVisuals.get(regionId);
+    if (!graphics) return;
+
+    const region = REGIONS.find(r => r.id === regionId);
+    if (!region) return;
+
+    const heatRatio = Math.min(heat / HEAT_CONFIG.maxHeat, 1);
+    graphics.setAlpha(0.1 + heatRatio * 0.25);
+    
+    graphics.clear();
+    graphics.fillStyle(region.color, 0.1 + heatRatio * 0.25);
+    graphics.fillRoundedRect(region.x, region.y, region.width, region.height, 20);
+    graphics.lineStyle(2 + heatRatio * 3, region.color, 0.3 + heatRatio * 0.4);
+    graphics.strokeRoundedRect(region.x, region.y, region.width, region.height, 20);
+  }
+
+  private updateConsecutiveCollect(petalType: PetalType): ConsecutiveCollect | null {
+    const state = SaveManager.getInstance().getGameState();
+    const now = Date.now();
+
+    if (!state.consecutiveCollect) {
+      state.consecutiveCollect = {
+        petalType,
+        count: 1,
+        lastCollectTime: now,
+        currentDecay: 0
+      };
+    } else {
+      if (state.consecutiveCollect.petalType === petalType) {
+        if (now - state.consecutiveCollect.lastCollectTime < DECAY_CONFIG.resetTimeWindow) {
+          state.consecutiveCollect.count++;
+          state.consecutiveCollect.lastCollectTime = now;
+          
+          if (state.consecutiveCollect.count >= DECAY_CONFIG.decayStartThreshold) {
+            const decaySteps = state.consecutiveCollect.count - DECAY_CONFIG.decayStartThreshold + 1;
+            state.consecutiveCollect.currentDecay = Math.min(
+              DECAY_CONFIG.maxDecay,
+              decaySteps * DECAY_CONFIG.decayPerCollect
+            );
+          }
+        } else {
+          state.consecutiveCollect = {
+            petalType,
+            count: 1,
+            lastCollectTime: now,
+            currentDecay: 0
+          };
+        }
+      } else {
+        state.consecutiveCollect = {
+          petalType,
+          count: 1,
+          lastCollectTime: now,
+          currentDecay: 0
+        };
+      }
+    }
+
+    return state.consecutiveCollect;
+  }
+
+  private getBalanceMultiplier(petalType: PetalType): number {
+    const config = PETAL_CONFIGS[petalType];
+    const level = config.level;
+    
+    if (level >= 7) return 1 - BALANCE_CONFIG.level7Reduction;
+    if (level >= 6) return 1 - BALANCE_CONFIG.level6Reduction;
+    if (level >= 5) return 1 - BALANCE_CONFIG.level5Reduction;
+    if (level >= 4) return 1 - BALANCE_CONFIG.level4Reduction;
+    if (level >= 3) return 1 - BALANCE_CONFIG.level3Reduction;
+    
+    return 1;
+  }
+
+  private calculateSpawnAdjustments(): SpawnAdjustment[] {
+    const state = SaveManager.getInstance().getGameState();
+    const adjustments: SpawnAdjustment[] = [];
+    const spawnableTypes = Object.values(PetalType).filter(type => PETAL_CONFIGS[type].spawnWeight > 0);
+
+    spawnableTypes.forEach(type => {
+      const config = PETAL_CONFIGS[type];
+      let heatMultiplier = 1;
+      
+      state.regionHeats.forEach(regionHeat => {
+        const region = REGIONS.find(r => r.id === regionHeat.regionId);
+        if (region && region.preferredPetals.includes(type)) {
+          const heatBonus = (regionHeat.currentHeat - region.baseHeat) * HEAT_CONFIG.heatBonusWeight;
+          heatMultiplier = Math.max(heatMultiplier, 1 + heatBonus);
+        }
+      });
+
+      if (config.level >= 5 && heatMultiplier > 1) {
+        heatMultiplier = 1 + (heatMultiplier - 1) * BALANCE_CONFIG.heatBoostForRare;
+      }
+
+      let decayMultiplier = 1;
+      if (state.consecutiveCollect && state.consecutiveCollect.petalType === type) {
+        decayMultiplier = 1 - state.consecutiveCollect.currentDecay * DECAY_CONFIG.decayPenaltyWeight;
+      }
+
+      const balanceMultiplier = this.getBalanceMultiplier(type);
+      
+      const finalWeight = Math.max(
+        BALANCE_CONFIG.minSpawnWeight,
+        config.spawnWeight * heatMultiplier * decayMultiplier * balanceMultiplier
+      );
+
+      adjustments.push({
+        type,
+        heatMultiplier,
+        decayMultiplier,
+        finalWeight
+      });
+    });
+
+    this.currentSpawnAdjustments = adjustments;
+    return adjustments;
+  }
+
+  private getRandomPetalType(): PetalType {
+    const adjustments = this.calculateSpawnAdjustments();
+    const totalWeight = adjustments.reduce((sum, adj) => sum + adj.finalWeight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const adj of adjustments) {
+      random -= adj.finalWeight;
+      if (random <= 0) {
+        return adj.type;
+      }
+    }
+    
+    return PetalType.MOONLIGHT;
+  }
+
+  private updateStatusIndicators(): void {
+    const state = SaveManager.getInstance().getGameState();
+    
+    if (this.player) {
+      const playerRegion = this.getRegionAtPosition(this.player.x, this.player.y);
+      if (playerRegion) {
+        const regionHeat = state.regionHeats.find(r => r.regionId === playerRegion.id);
+        if (regionHeat && regionHeat.currentHeat > 1.1) {
+          const heatPercent = Math.round((regionHeat.currentHeat - 1) * 100);
+          this.heatIndicator?.setText(`🔥 ${playerRegion.name}热度 +${heatPercent}%`);
+        } else {
+          this.heatIndicator?.setText('');
+        }
+      } else {
+        this.heatIndicator?.setText('');
+      }
+    }
+
+    if (state.consecutiveCollect && state.consecutiveCollect.currentDecay > 0) {
+      const config = PETAL_CONFIGS[state.consecutiveCollect.petalType];
+      const decayPercent = Math.round(state.consecutiveCollect.currentDecay * 100);
+      this.decayIndicator?.setText(`⚠️ ${config.name}连采衰减 -${decayPercent}%`);
+    } else {
+      this.decayIndicator?.setText('');
+    }
+  }
+
+  private processHeatDecay(delta: number): void {
+    this.heatDecayTimer += delta;
+    if (this.heatDecayTimer >= HEAT_CONFIG.heatDecayInterval) {
+      this.heatDecayTimer = 0;
+      const state = SaveManager.getInstance().getGameState();
+      
+      state.regionHeats.forEach(regionHeat => {
+        const region = REGIONS.find(r => r.id === regionHeat.regionId);
+        if (!region) return;
+
+        if (regionHeat.currentHeat > region.baseHeat) {
+          regionHeat.currentHeat = Math.max(
+            region.baseHeat,
+            regionHeat.currentHeat - HEAT_CONFIG.heatDecayAmount
+          );
+          this.updateRegionVisual(regionHeat.regionId, regionHeat.currentHeat);
+        }
+      });
+    }
+  }
+
+  private processDecayRecovery(delta: number): void {
+    this.decayRecoveryTimer += delta;
+    if (this.decayRecoveryTimer >= DECAY_CONFIG.decayRecoveryInterval) {
+      this.decayRecoveryTimer = 0;
+      const state = SaveManager.getInstance().getGameState();
+      
+      if (state.consecutiveCollect && state.consecutiveCollect.currentDecay > 0) {
+        const now = Date.now();
+        if (now - state.consecutiveCollect.lastCollectTime > DECAY_CONFIG.resetTimeWindow) {
+          state.consecutiveCollect.currentDecay = Math.max(
+            0,
+            state.consecutiveCollect.currentDecay - DECAY_CONFIG.decayRecoveryRate
+          );
+          
+          if (state.consecutiveCollect.currentDecay <= 0) {
+            state.consecutiveCollect = null;
+          }
+        }
+      }
+    }
   }
 
   private setupSettingsListener(): void {
@@ -213,36 +509,72 @@ export class PetalSystem {
     const x = padding + Math.random() * (WORLD_WIDTH - padding * 2);
     const y = padding + Math.random() * (WORLD_HEIGHT - padding * 2);
 
+    const region = this.getRegionAtPosition(x, y);
+    const regionHeat = region 
+      ? SaveManager.getInstance().getGameState().regionHeats.find(r => r.regionId === region.id)
+      : null;
+
+    const adjustment = this.currentSpawnAdjustments.find(a => a.type === type);
+
     const petal = this.petalGroup.get(x, y, `petal_${type}`) as PetalObject;
     if (!petal) return;
 
     petal.petalType = type;
     petal.isCollecting = false;
     petal.floatOffset = Math.random() * Math.PI * 2;
+    petal.regionId = region?.id;
+    petal.spawnTime = Date.now();
+    petal.heatBonus = adjustment?.heatMultiplier && adjustment.heatMultiplier > 1 
+      ? (adjustment.heatMultiplier - 1) * 100 
+      : 0;
+    petal.decayPenalty = adjustment?.decayMultiplier && adjustment.decayMultiplier < 1
+      ? (1 - adjustment.decayMultiplier) * 100
+      : 0;
     
     petal.setActive(true);
     petal.setVisible(true);
     petal.setSize(30, 30);
-    petal.setDisplaySize(40 + config.level * 5, 40 + config.level * 5);
+    
+    let baseSize = 40 + config.level * 5;
+    if (petal.heatBonus > 0) {
+      baseSize *= 1 + Math.min(petal.heatBonus / 200, 0.3);
+    }
+    if (petal.decayPenalty > 0) {
+      baseSize *= 1 - Math.min(petal.decayPenalty / 200, 0.2);
+    }
+    
+    petal.setDisplaySize(baseSize, baseSize);
     petal.setDepth(15);
     petal.setBlendMode(Phaser.BlendModes.ADD);
+
+    if (petal.heatBonus > 10) {
+      const pulseTween = this.scene.tweens.add({
+        targets: petal,
+        scale: { 
+          from: baseSize / (40 + config.level * 5), 
+          to: (baseSize / (40 + config.level * 5)) * 1.15 
+        },
+        alpha: { from: 1, to: 0.85 },
+        duration: 800 + (200 - Math.min(petal.heatBonus, 200)),
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      (petal as any)._pulseTween = pulseTween;
+    }
+
+    if (petal.decayPenalty > 10) {
+      petal.setAlpha(0.85 - Math.min(petal.decayPenalty / 300, 0.3));
+      petal.setTint(0xcccccc);
+    }
     
     this.petalPool.push(petal);
-    EventManager.getInstance().emit('petal:spawned', { type, x, y });
-  }
-
-  private getRandomPetalType(): PetalType {
-    const spawnableTypes = Object.values(PetalType).filter(type => PETAL_CONFIGS[type].spawnWeight > 0);
-    const totalWeight = spawnableTypes.reduce((sum, type) => sum + PETAL_CONFIGS[type].spawnWeight, 0);
-    let random = Math.random() * totalWeight;
-
-    for (const type of spawnableTypes) {
-      random -= PETAL_CONFIGS[type].spawnWeight;
-      if (random <= 0) {
-        return type;
-      }
-    }
-    return PetalType.MOONLIGHT;
+    EventManager.getInstance().emit('petal:spawned', { 
+      type, x, y, 
+      regionId: region?.id,
+      heatBonus: petal.heatBonus,
+      decayPenalty: petal.decayPenalty
+    });
   }
 
   public update(time: number, delta: number, player: Phaser.Physics.Arcade.Sprite | null, collectRange: number = 80, attractRange: number = 150): void {
@@ -259,6 +591,10 @@ export class PetalSystem {
       this.spawnPetal();
       this.spawnTimer = 0;
     }
+
+    this.processHeatDecay(delta);
+    this.processDecayRecovery(delta);
+    this.updateStatusIndicators();
 
     this.updatePetals(time, delta, player, collectRange, attractRange);
   }
@@ -306,10 +642,29 @@ export class PetalSystem {
 
     const type = petal.petalType;
     const config = PETAL_CONFIGS[type];
+    const region = petal.regionId ? this.getRegionAtPosition(petal.x, petal.y) : null;
 
     if (this.collectParticles) {
       this.collectParticles.setParticleTint(config.glowColor);
       this.collectParticles.emitParticleAt(petal.x, petal.y);
+    }
+
+    if (region) {
+      this.updateRegionHeat(region.id, true);
+    }
+
+    const consecutiveInfo = this.updateConsecutiveCollect(type);
+
+    let collectBonus = '';
+    if (petal.heatBonus && petal.heatBonus > 0) {
+      collectBonus += `🔥+${Math.round(petal.heatBonus)}% `;
+    }
+    if (consecutiveInfo && consecutiveInfo.currentDecay > 0) {
+      collectBonus += `⚠️-${Math.round(consecutiveInfo.currentDecay * 100)}%`;
+    }
+
+    if ((petal as any)._pulseTween) {
+      (petal as any)._pulseTween.stop();
     }
 
     this.scene.tweens.add({
@@ -323,9 +678,19 @@ export class PetalSystem {
       onComplete: () => {
         petal.setActive(false);
         petal.setVisible(false);
+        petal.clearTint();
         
         const state = SaveManager.getInstance().addPetal(type, 1);
-        EventManager.getInstance().emit('petal:collected', { type, count: 1 });
+        
+        EventManager.getInstance().emit('petal:collected', { 
+          type, 
+          count: 1,
+          regionId: region?.id,
+          heatBonus: petal.heatBonus || 0,
+          decayPenalty: petal.decayPenalty || 0,
+          consecutiveCount: consecutiveInfo?.count || 0,
+          collectBonus
+        });
         EventManager.getInstance().emit('audio:play', { key: 'sfx_collect', volume: 0.3 });
       }
     });
@@ -439,9 +804,28 @@ export class PetalSystem {
       this.collectParticles.stop();
       this.collectParticles.destroy();
     }
+    
+    this.petalPool.forEach(petal => {
+      if ((petal as any)._pulseTween) {
+        (petal as any)._pulseTween.stop();
+      }
+    });
+    
     if (this.petalGroup) {
       this.petalGroup.destroy();
     }
     this.petalPool = [];
+    
+    this.regionVisuals.forEach(graphics => {
+      graphics.destroy();
+    });
+    this.regionVisuals.clear();
+    
+    if (this.heatIndicator) {
+      this.heatIndicator.destroy();
+    }
+    if (this.decayIndicator) {
+      this.decayIndicator.destroy();
+    }
   }
 }

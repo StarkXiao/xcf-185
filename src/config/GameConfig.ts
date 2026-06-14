@@ -16,7 +16,8 @@ import {
   CollectionTaskChain,
   CollectionTaskStatus,
   RedDotState,
-  TaskReward
+  TaskReward,
+  Region
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -43,6 +44,111 @@ export const OBSTACLE_CONFIG = {
   minSize: 60,
   maxSize: 120,
   avoidRadius: 200
+};
+
+export const REGIONS: Region[] = [
+  {
+    id: 'moonlight_glade',
+    name: '月光林地',
+    description: '森林东部的开阔草地，夜晚时分会被月光笼罩',
+    x: 100,
+    y: 100,
+    width: 600,
+    height: 600,
+    preferredPetals: [PetalType.MOONLIGHT, PetalType.STARLIGHT],
+    baseHeat: 1.0,
+    color: 0x88ccff
+  },
+  {
+    id: 'starlight_lake',
+    name: '星辰湖畔',
+    description: '森林中央的静谧湖泊，星空倒映在湖面上',
+    x: 800,
+    y: 100,
+    width: 600,
+    height: 600,
+    preferredPetals: [PetalType.STARLIGHT, PetalType.MOONLIGHT, PetalType.DEW],
+    baseHeat: 1.0,
+    color: 0xffe66d
+  },
+  {
+    id: 'dew_valley',
+    name: '晨露山谷',
+    description: '森林西北部的山谷，清晨时分雾气弥漫',
+    x: 100,
+    y: 800,
+    width: 500,
+    height: 500,
+    preferredPetals: [PetalType.DEW, PetalType.GLOWING],
+    baseHeat: 1.0,
+    color: 0xa8e6cf
+  },
+  {
+    id: 'glowing_cave',
+    name: '荧光洞穴',
+    description: '森林深处的神秘洞穴，洞壁散发着微弱荧光',
+    x: 700,
+    y: 800,
+    width: 500,
+    height: 500,
+    preferredPetals: [PetalType.GLOWING, PetalType.DREAM],
+    baseHeat: 1.0,
+    color: 0xff9ecb
+  },
+  {
+    id: 'dream_garden',
+    name: '梦境花园',
+    description: '只有在梦中才能到达的神秘花园',
+    x: 300,
+    y: 1400,
+    width: 900,
+    height: 500,
+    preferredPetals: [PetalType.DREAM, PetalType.ETERNAL, PetalType.WAKEUP],
+    baseHeat: 0.8,
+    color: 0xc8a2ff
+  },
+  {
+    id: 'eternal_temple',
+    name: '永恒神殿',
+    description: '森林最深处的古老神殿，传说封印着永恒之力',
+    x: 1100,
+    y: 800,
+    width: 300,
+    height: 400,
+    preferredPetals: [PetalType.ETERNAL, PetalType.DREAM],
+    baseHeat: 0.6,
+    color: 0xffd700
+  }
+];
+
+export const HEAT_CONFIG = {
+  heatIncreasePerCollect: 0.15,
+  maxHeat: 2.5,
+  heatDecayRate: 0.05,
+  heatDecayInterval: 5000,
+  heatDecayAmount: 0.1,
+  heatBonusWeight: 0.4
+};
+
+export const DECAY_CONFIG = {
+  decayStartThreshold: 3,
+  decayPerCollect: 0.12,
+  maxDecay: 0.7,
+  decayRecoveryRate: 0.08,
+  decayRecoveryInterval: 8000,
+  resetTimeWindow: 15000,
+  decayPenaltyWeight: 0.5
+};
+
+export const BALANCE_CONFIG = {
+  highLevelSpawnReduction: 0.15,
+  level3Reduction: 0.1,
+  level4Reduction: 0.2,
+  level5Reduction: 0.3,
+  level6Reduction: 0.4,
+  level7Reduction: 0.5,
+  heatBoostForRare: 0.3,
+  minSpawnWeight: 0.5
 };
 
 export const PATHFINDING_CONFIG = {
@@ -1159,7 +1265,14 @@ export const INITIAL_GAME_STATE: GameState = {
   efficiencyBoost: 0,
   collectionTasks: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASKS)),
   collectionTaskChains: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASK_CHAINS)),
-  redDotState: JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE))
+  redDotState: JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE)),
+  regionHeats: REGIONS.map(region => ({
+    regionId: region.id,
+    currentHeat: region.baseHeat,
+    lastCollectTime: 0,
+    collectCount: 0
+  })),
+  consecutiveCollect: null
 };
 
 export const INITIAL_TUTORIAL_STATE = {
