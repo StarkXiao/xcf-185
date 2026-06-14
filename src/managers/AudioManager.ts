@@ -19,6 +19,13 @@ export class AudioManager {
       this.playSfx(key, volume);
     });
 
+    EventManager.getInstance().on('settings:updated', () => {
+      this.loadContextPreferences();
+      if (this.currentContext) {
+        this.switchContext(this.currentContext, true);
+      }
+    });
+
     this.loadContextPreferences();
   }
 
@@ -33,8 +40,8 @@ export class AudioManager {
     this.scene = scene;
   }
 
-  public switchContext(context: AudioContextType): void {
-    if (this.currentContext === context) return;
+  public switchContext(context: AudioContextType, force: boolean = false): void {
+    if (this.currentContext === context && !force) return;
 
     const previousContext = this.currentContext;
     this.currentContext = context;
@@ -292,7 +299,7 @@ export class AudioManager {
       this.stopBgm();
     } else {
       if (this.currentContext) {
-        this.switchContext(this.currentContext);
+        this.switchContext(this.currentContext, true);
       } else {
         this.playBgm('bgm_main');
       }

@@ -336,6 +336,7 @@ export class SaveManager {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
       this.currentSave = saveData;
+      EventManager.getInstance().emit('settings:updated', { settings: newSettings });
     } catch (error) {
       console.error('Failed to update settings:', error);
     }

@@ -9,6 +9,7 @@ export class MenuScene extends Phaser.Scene {
   private titleGlow: Phaser.GameObjects.Text | null = null;
   private savePanel: Phaser.GameObjects.Container | null = null;
   private backupListContainer: Phaser.GameObjects.Container | null = null;
+  private audioPanel: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('Menu');
@@ -143,6 +144,10 @@ export class MenuScene extends Phaser.Scene {
     this.createButton('💾 存档管理', startY + 300, () => {
       this.toggleSavePanel();
     }, 0x667788);
+
+    this.createButton('🎵 声场设置', startY + 400, () => {
+      this.toggleAudioPanel();
+    }, 0x665577);
   }
 
   private createButton(text: string, y: number, callback: () => void, color: number = 0xff6b9d): Phaser.GameObjects.Text {
@@ -575,6 +580,222 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  private toggleAudioPanel(): void {
+    if (this.audioPanel) {
+      this.closeAudioPanel();
+    } else {
+      this.openAudioPanel();
+    }
+  }
+
+  private openAudioPanel(): void {
+    this.audioPanel = this.add.container(0, 0).setDepth(200);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.audioPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🎵 声场设置', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.audioPanel.add(title);
+
+    const subtitle = this.add.text(GAME_WIDTH / 2, 95, '为每个游戏场景定制专属声场效果', {
+      fontFamily: 'Arial',
+      fontSize: '13px',
+      color: '#a8e6cf'
+    }).setOrigin(0.5);
+    this.audioPanel.add(subtitle);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeAudioPanel());
+    this.audioPanel.add(closeBtn);
+
+    this.renderAudioSettings();
+
+    const hint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 30,
+      '💡 所有声场偏好将自动保存，重进游戏后依然生效', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#666666'
+    }).setOrigin(0.5);
+    this.audioPanel.add(hint);
+
+    this.audioPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.audioPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private renderAudioSettings(): void {
+    if (!this.audioPanel) return;
+
+    const contexts = [
+      { type: AudioContextType.MENU, icon: '🏠', name: '主菜单', desc: '主标题界面，轻柔开场', accent: 0xff6b9d },
+      { type: AudioContextType.EXPLORE, icon: '🌲', name: '探索模式', desc: '森林漫步与花瓣采集', accent: 0xa8e6cf },
+      { type: AudioContextType.SYNTHESIS, icon: '⚗️', name: '合成面板', desc: '专注调配、神秘氛围', accent: 0xc8a2ff },
+      { type: AudioContextType.COMPLETE, icon: '🌸', name: '完成结局', desc: '恋人苏醒、温暖收尾', accent: 0xffe66d }
+    ];
+
+    const startY = 140;
+    const itemHeight = 110;
+    const cardW = GAME_WIDTH - 100;
+
+    contexts.forEach((ctx, idx) => {
+      const y = startY + idx * (itemHeight + 15);
+      const prefs = AudioManager.getInstance().getContextPreferences(ctx.type);
+
+      const card = this.add.graphics();
+      card.fillStyle(0x1a0a2e, 0.9);
+      card.fillRoundedRect(50, y, cardW, itemHeight, 14);
+      card.lineStyle(2, ctx.accent, prefs.enabled ? 0.6 : 0.2);
+      card.strokeRoundedRect(50, y, cardW, itemHeight, 14);
+      this.audioPanel!.add(card);
+
+      const icon = this.add.text(80, y + 30, ctx.icon, {
+        fontFamily: 'Arial',
+        fontSize: '28px'
+      }).setOrigin(0, 0.5);
+      this.audioPanel!.add(icon);
+
+      const name = this.add.text(130, y + 25, ctx.name, {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: prefs.enabled ? '#ffffff' : '#555555',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.audioPanel!.add(name);
+
+      const desc = this.add.text(130, y + 50, ctx.desc, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: prefs.enabled ? '#888888' : '#444444'
+      }).setOrigin(0, 0.5);
+      this.audioPanel!.add(desc);
+
+      const toggleX = GAME_WIDTH - 90;
+      const toggleY = y + 35;
+
+      const toggleBg = this.add.graphics();
+      toggleBg.fillStyle(prefs.enabled ? ctx.accent : 0x333333, 1);
+      toggleBg.fillRoundedRect(toggleX - 25, toggleY - 15, 50, 30, 15);
+      this.audioPanel!.add(toggleBg);
+
+      const knobX = prefs.enabled ? toggleX + 10 : toggleX - 10;
+      const knob = this.add.circle(knobX, toggleY, 11, 0xffffff)
+        .setInteractive({ useHandCursor: true });
+      this.audioPanel!.add(knob);
+
+      knob.on('pointerup', () => {
+        const newVal = !prefs.enabled;
+        AudioManager.getInstance().setContextEnabled(ctx.type, newVal);
+        AudioManager.getInstance().playSfx('sfx_click', 0.3);
+        this.refreshAudioPanel();
+      });
+
+      const sliderY = y + 82;
+      const sliderStartX = 80;
+      const sliderEndX = GAME_WIDTH - 100;
+      const sliderW = sliderEndX - sliderStartX;
+      const vol = prefs.enabled ? prefs.volume : prefs.volume;
+
+      const sliderBg = this.add.graphics();
+      sliderBg.fillStyle(0x333333, 0.8);
+      sliderBg.fillRoundedRect(sliderStartX, sliderY - 5, sliderW, 10, 5);
+      this.audioPanel!.add(sliderBg);
+
+      const fillW = sliderW * vol;
+      const sliderFill = this.add.graphics();
+      sliderFill.fillStyle(prefs.enabled ? ctx.accent : 0x555555, 0.8);
+      sliderFill.fillRoundedRect(sliderStartX, sliderY - 5, fillW, 10, 5);
+      this.audioPanel!.add(sliderFill);
+
+      const volText = this.add.text(sliderEndX + 5, sliderY, `${Math.round(vol * 100)}%`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: prefs.enabled ? '#ffffff' : '#555555'
+      }).setOrigin(1, 0.5);
+      this.audioPanel!.add(volText);
+
+      const sliderKnob = this.add.circle(sliderStartX + fillW, sliderY, 10, 0xffffff)
+        .setInteractive({ useHandCursor: true, draggable: true });
+      this.audioPanel!.add(sliderKnob);
+
+      this.input.setDraggable(sliderKnob);
+      sliderKnob.on('drag', (_ptr: Phaser.Input.Pointer, dragX: number) => {
+        const clamped = Phaser.Math.Clamp(dragX, sliderStartX, sliderEndX);
+        const newVol = (clamped - sliderStartX) / sliderW;
+        sliderKnob.x = clamped;
+        sliderFill.clear();
+        sliderFill.fillStyle(prefs.enabled ? ctx.accent : 0x555555, 0.8);
+        sliderFill.fillRoundedRect(sliderStartX, sliderY - 5, clamped - sliderStartX, 10, 5);
+        volText.setText(`${Math.round(newVol * 100)}%`);
+      });
+      sliderKnob.on('dragend', () => {
+        const finalVol = Phaser.Math.Clamp((sliderKnob.x - sliderStartX) / sliderW, 0, 1);
+        AudioManager.getInstance().setContextVolume(ctx.type, finalVol);
+        AudioManager.getInstance().playSfx('sfx_click', 0.15);
+      });
+
+      const previewBtn = this.createSmallButton(
+        GAME_WIDTH - 160, y + 35,
+        '试听', ctx.accent,
+        () => {
+          const prev = AudioManager.getInstance().getCurrentContext();
+          AudioManager.getInstance().switchContext(ctx.type);
+          setTimeout(() => {
+            if (prev) AudioManager.getInstance().switchContext(prev);
+          }, 2000);
+          this.showToast(`🎵 试听 ${ctx.name} 声场 (2秒)`, 2000);
+        }
+      );
+      previewBtn.setAlpha(prefs.enabled ? 1 : 0.3);
+      this.audioPanel!.add(previewBtn);
+    });
+  }
+
+  private refreshAudioPanel(): void {
+    if (!this.audioPanel) return;
+    const children = this.audioPanel.getAll();
+    children.forEach(c => c.destroy());
+    this.renderAudioSettings();
+    if (this.audioPanel) {
+      const hint = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 30,
+        '💡 所有声场偏好将自动保存，重进游戏后依然生效', {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#666666'
+      }).setOrigin(0.5);
+      this.audioPanel.add(hint);
+    }
+  }
+
+  private closeAudioPanel(): void {
+    if (!this.audioPanel) return;
+
+    this.tweens.add({
+      targets: this.audioPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.audioPanel) {
+          this.audioPanel.destroy();
+          this.audioPanel = null;
+        }
+      }
+    });
+  }
+
   private showToast(message: string, duration: number = 2000): void {
     const toast = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, message, {
       fontFamily: 'Arial',
@@ -613,6 +834,10 @@ export class MenuScene extends Phaser.Scene {
     if (this.savePanel) {
       this.savePanel.destroy();
       this.savePanel = null;
+    }
+    if (this.audioPanel) {
+      this.audioPanel.destroy();
+      this.audioPanel = null;
     }
   }
 }
