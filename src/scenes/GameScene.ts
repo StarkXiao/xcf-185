@@ -16,6 +16,8 @@ export class GameScene extends Phaser.Scene {
   private uiManager!: UIManager;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
+  private trendTimer: number = 0;
+  private readonly TREND_INTERVAL: number = 30000;
 
   constructor() {
     super('Game');
@@ -49,6 +51,8 @@ export class GameScene extends Phaser.Scene {
 
     (this as any).petalSystem = this.petalSystem;
 
+    SaveManager.getInstance().addTrendPoint();
+
     this.events.on('shutdown', () => this.destroy());
     this.events.on('pause', () => this.pause());
     this.events.on('resume', () => this.resume());
@@ -70,6 +74,12 @@ export class GameScene extends Phaser.Scene {
       const state = SaveManager.getInstance().getGameState();
       SaveManager.getInstance().saveGame(state);
       this.saveTimer = 0;
+    }
+
+    this.trendTimer += delta;
+    if (this.trendTimer >= this.TREND_INTERVAL) {
+      SaveManager.getInstance().addTrendPoint();
+      this.trendTimer = 0;
     }
   }
 

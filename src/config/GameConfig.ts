@@ -1,4 +1,14 @@
-import { PetalType, PetalConfig, SynthesisRecipe, GameState } from '../types';
+import { 
+  PetalType, 
+  PetalConfig, 
+  SynthesisRecipe, 
+  GameState, 
+  Goal, 
+  GoalType, 
+  GoalStatus, 
+  QuickEntry, 
+  QuickEntryType 
+} from '../types';
 
 export const GAME_WIDTH = 750;
 export const GAME_HEIGHT = 1334;
@@ -414,6 +424,134 @@ export const SYNTHESIS_RECIPES: SynthesisRecipe[] = [
   }
 ];
 
+export const MAX_RESOURCE_TREND_POINTS = 50;
+export const TREND_SAMPLE_INTERVAL = 30000;
+export const MAX_SYNTHESIS_RECORDS = 30;
+export const MAX_STATUS_MESSAGES = 5;
+export const MAX_ACTIVE_GOALS = 5;
+
+export const INITIAL_GOALS: Goal[] = [
+  {
+    id: 'goal_collect_moonlight_10',
+    type: GoalType.COLLECT_PETAL,
+    title: '收集10朵月光花瓣',
+    description: '在森林中探索收集10朵月光花瓣',
+    target: PetalType.MOONLIGHT,
+    targetCount: 10,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 1
+  },
+  {
+    id: 'goal_synthesize_recipe_1',
+    type: GoalType.SYNTHESIZE_RECIPE,
+    title: '完成首次合成',
+    description: '使用合成系统完成任意一次合成',
+    target: 'any',
+    targetCount: 1,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 2
+  },
+  {
+    id: 'goal_total_collect_20',
+    type: GoalType.TOTAL_COLLECTED,
+    title: '花瓣收藏家',
+    description: '累计收集20朵任意花瓣',
+    target: 'total',
+    targetCount: 20,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 3
+  },
+  {
+    id: 'goal_unlock_starlight',
+    type: GoalType.UNLOCK_PETAL,
+    title: '星光初现',
+    description: '通过合成或收集解锁星光花瓣',
+    target: PetalType.STARLIGHT,
+    targetCount: 1,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 4
+  },
+  {
+    id: 'goal_unlock_recipe_2',
+    type: GoalType.UNLOCK_RECIPE,
+    title: '配方探索者',
+    description: '收集到星光花瓣解锁配方2',
+    target: 'recipe_2',
+    targetCount: 1,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 5
+  },
+  {
+    id: 'goal_total_synthesize_5',
+    type: GoalType.TOTAL_SYNTHESIZED,
+    title: '合成匠人',
+    description: '累计完成5次成功合成',
+    target: 'total',
+    targetCount: 5,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 6
+  },
+  {
+    id: 'goal_collect_dew_5',
+    type: GoalType.COLLECT_PETAL,
+    title: '露珠凝结',
+    description: '收集5朵露珠花瓣',
+    target: PetalType.DEW,
+    targetCount: 5,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 7
+  },
+  {
+    id: 'goal_unlock_wakeup',
+    type: GoalType.UNLOCK_PETAL,
+    title: '唤醒之花',
+    description: '合成出传说中的唤醒之花',
+    target: PetalType.WAKEUP,
+    targetCount: 1,
+    currentCount: 0,
+    status: GoalStatus.PENDING,
+    priority: 10
+  }
+];
+
+export const DEFAULT_QUICK_ENTRIES: QuickEntry[] = [
+  {
+    id: QuickEntryType.SYNTHESIS,
+    label: '合成',
+    icon: '⚗️',
+    color: 0xff6b9d,
+    enabled: true
+  },
+  {
+    id: QuickEntryType.COLLECTION,
+    label: '图鉴',
+    icon: '📖',
+    color: 0xa8e6cf,
+    enabled: true
+  },
+  {
+    id: QuickEntryType.GOAL,
+    label: '目标',
+    icon: '🎯',
+    color: 0xffd93d,
+    enabled: true
+  },
+  {
+    id: QuickEntryType.RECIPE_HINT,
+    label: '推荐',
+    icon: '💡',
+    color: 0xc8a2ff,
+    enabled: true
+  }
+];
+
 export const INITIAL_GAME_STATE: GameState = {
   playerX: WORLD_WIDTH / 2,
   playerY: WORLD_HEIGHT / 2,
@@ -447,11 +585,16 @@ export const INITIAL_GAME_STATE: GameState = {
     'recipe_7'
   ],
   discoveredMutations: [],
-  discoveredFailures: []
+  discoveredFailures: [],
+  resourceTrend: [],
+  synthesisRecords: [],
+  goals: JSON.parse(JSON.stringify(INITIAL_GOALS)),
+  activeStatusMessages: [],
+  lastSaveTime: 0
 };
 
 export const STORAGE_KEY = 'dream_forest_save';
-export const SAVE_VERSION = '2.0.0';
+export const SAVE_VERSION = '3.0.0';
 
 export const INITIAL_SETTINGS = {
   bgmVolume: 0.5,

@@ -139,6 +139,7 @@ export class SynthesisSystem {
         });
       }
       SaveManager.getInstance().addFailedPetal(result.output, result.count);
+      SaveManager.getInstance().addSynthesisRecord(recipe.id, result);
 
       EventManager.getInstance().emit('synthesis:fail', result);
       EventManager.getInstance().emit('audio:play', { key: 'sfx_synthesis_fail', volume: 0.5 });
@@ -149,6 +150,7 @@ export class SynthesisSystem {
     } else if (result.resultType === SynthesisResultType.MUTATION) {
       SaveManager.getInstance().addMutationPetal(result.output, result.count);
       SaveManager.getInstance().incrementSynthesized();
+      SaveManager.getInstance().addSynthesisRecord(recipe.id, result);
 
       EventManager.getInstance().emit('synthesis:mutation', result);
       EventManager.getInstance().emit('synthesis:complete', result);
@@ -160,6 +162,7 @@ export class SynthesisSystem {
     } else {
       SaveManager.getInstance().addPetal(result.output, result.count);
       SaveManager.getInstance().incrementSynthesized();
+      SaveManager.getInstance().addSynthesisRecord(recipe.id, result);
 
       EventManager.getInstance().emit('synthesis:complete', result);
       EventManager.getInstance().emit('audio:play', { key: 'sfx_synthesis_complete', volume: 0.5 });
