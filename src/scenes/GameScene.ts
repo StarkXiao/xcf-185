@@ -18,13 +18,16 @@ export class GameScene extends Phaser.Scene {
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
   private readonly TREND_INTERVAL: number = 30000;
+  private useInheritance: boolean = false;
 
   constructor() {
     super('Game');
   }
 
-  init(data: { continueGame?: boolean }): void {
-    if (!data.continueGame) {
+  init(data: { continueGame?: boolean; useInheritance?: boolean }): void {
+    this.useInheritance = data.useInheritance || false;
+    
+    if (!data.continueGame && !data.useInheritance) {
       SaveManager.getInstance().resetGame();
     }
   }
@@ -44,6 +47,11 @@ export class GameScene extends Phaser.Scene {
     this.petalSystem = new PetalSystem(this);
     this.petalSystem.create();
     this.petalSystem.setPlayer(this.playerController.getPlayer());
+
+    const state = SaveManager.getInstance().getGameState();
+    if (state.efficiencyBoost && state.efficiencyBoost > 0) {
+      this.petalSystem.setEfficiencyBoost(state.efficiencyBoost);
+    }
 
     this.synthesisSystem = new SynthesisSystem(this);
 

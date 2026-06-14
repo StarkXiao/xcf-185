@@ -170,6 +170,7 @@ export interface GameState {
   goals: Goal[];
   activeStatusMessages: StatusMessage[];
   lastSaveTime: number;
+  efficiencyBoost?: number;
 }
 
 export interface SaveData {
@@ -268,6 +269,72 @@ export interface TutorialState {
   dismissed: boolean;
 }
 
+export interface EfficiencyStats {
+  petalPerMinute: number;
+  synthesisPerMinute: number;
+  successRate: number;
+  mutationRate: number;
+  avgSynthesisTime: number;
+  totalEfficiencyScore: number;
+  efficiencyRating: 'S' | 'A' | 'B' | 'C' | 'D';
+}
+
+export interface KeyMilestone {
+  id: string;
+  type: 'collect' | 'synthesize' | 'unlock' | 'mutation' | 'complete';
+  title: string;
+  description: string;
+  timestamp: number;
+  playTimeAt: number;
+  icon: string;
+  color: number;
+}
+
+export interface RareDrop {
+  type: PetalType;
+  name: string;
+  count: number;
+  rarity: 'legendary' | 'epic' | 'rare' | 'uncommon';
+  obtainedAt: number;
+  description: string;
+}
+
+export enum InheritanceType {
+  PETAL_RESERVE = 'petal_reserve',
+  UNLOCKED_RECIPES = 'unlocked_recipes',
+  DISCOVERED_MUTATIONS = 'discovered_mutations',
+  COLLECTION_PROGRESS = 'collection_progress',
+  EFFICIENCY_BOOST = 'efficiency_boost',
+  GOAL_PROGRESS = 'goal_progress'
+}
+
+export interface InheritanceOption {
+  id: InheritanceType;
+  name: string;
+  description: string;
+  icon: string;
+  cost: number;
+  costType: 'points' | 'petals';
+  costPetalType?: PetalType;
+  selected: boolean;
+  maxSelectable: number;
+}
+
+export interface InheritanceData {
+  selectedOptions: InheritanceType[];
+  inheritedPetals: Partial<Record<PetalType, number>>;
+  inheritedRecipes: string[];
+  efficiencyBoost: number;
+}
+
+export interface ReviewData {
+  efficiencyStats: EfficiencyStats;
+  milestones: KeyMilestone[];
+  rareDrops: RareDrop[];
+  inheritanceOptions: InheritanceOption[];
+  totalScore: number;
+}
+
 export interface GameEvents {
   'petal:collected': { type: PetalType; count: number };
   'petal:spawned': { type: PetalType; x: number; y: number };
@@ -297,4 +364,5 @@ export interface GameEvents {
   'settings:updated': { settings: ControlSettings };
   'synthesis:panel_opened': {};
   'synthesis:button_clicked': {};
+  'inheritance:apply': { data: InheritanceData };
 }

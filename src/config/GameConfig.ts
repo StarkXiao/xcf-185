@@ -7,7 +7,10 @@ import {
   GoalType, 
   GoalStatus, 
   QuickEntry, 
-  QuickEntryType 
+  QuickEntryType,
+  InheritanceType,
+  InheritanceOption,
+  KeyMilestone
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -663,7 +666,8 @@ export const INITIAL_GAME_STATE: GameState = {
   synthesisRecords: [],
   goals: JSON.parse(JSON.stringify(INITIAL_GOALS)),
   activeStatusMessages: [],
-  lastSaveTime: 0
+  lastSaveTime: 0,
+  efficiencyBoost: 0
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -732,3 +736,95 @@ export const RECIPE_UNLOCK_CONDITIONS: Record<string, { petals: { type: PetalTyp
   'recipe_11': { petals: [{ type: PetalType.MOONLIGHT_SHIMMER, count: 1 }] },
   'recipe_12': { petals: [{ type: PetalType.STARLIGHT_BURST, count: 1 }] }
 };
+
+export const MILESTONE_CONFIG = {
+  firstCollect: { icon: '🌸', color: 0xff6b9d, title: '初次收集' },
+  firstSynthesis: { icon: '⚗️', color: 0xc8a2ff, title: '首次合成' },
+  firstMutation: { icon: '✨', color: 0xffd93d, title: '首次变异' },
+  unlockStarlight: { icon: '⭐', color: 0xffe66d, title: '星光绽放' },
+  unlockDew: { icon: '💧', color: 0xa8e6cf, title: '露珠凝结' },
+  unlockGlowing: { icon: '💫', color: 0xff9ecb, title: '荧光闪耀' },
+  unlockDream: { icon: '🌙', color: 0xc8a2ff, title: '梦境降临' },
+  unlockEternal: { icon: '👑', color: 0xffd700, title: '永恒之花' },
+  unlockWakeup: { icon: '💖', color: 0xff6b9d, title: '恋人苏醒' },
+  collect50: { icon: '🎯', color: 0x88ccff, title: '收集达人' },
+  collect100: { icon: '🏆', color: 0xffd700, title: '花瓣收藏家' },
+  synthesis10: { icon: '🔮', color: 0xc8a2ff, title: '合成学徒' },
+  completeGame: { icon: '🎊', color: 0xff6b9d, title: '游戏通关' }
+};
+
+export const RARITY_CONFIG: Record<string, { label: string; color: string; glowColor: number; threshold: number }> = {
+  legendary: { label: '传说', color: '#ffd700', glowColor: 0xffaa00, threshold: 0.02 },
+  epic: { label: '史诗', color: '#c8a2ff', glowColor: 0x9966ff, threshold: 0.05 },
+  rare: { label: '稀有', color: '#88ccff', glowColor: 0x4488ff, threshold: 0.15 },
+  uncommon: { label: '不凡', color: '#a8e6cf', glowColor: 0x44ddaa, threshold: 0.30 }
+};
+
+export const INHERITANCE_OPTIONS: Omit<InheritanceOption, 'selected'>[] = [
+  {
+    id: InheritanceType.PETAL_RESERVE,
+    name: '花瓣储备',
+    description: '保留10%的各类型花瓣作为初始储备',
+    icon: '🌸',
+    cost: 3,
+    costType: 'points',
+    maxSelectable: 1
+  },
+  {
+    id: InheritanceType.UNLOCKED_RECIPES,
+    name: '配方传承',
+    description: '继承所有已解锁的合成配方',
+    icon: '📜',
+    cost: 2,
+    costType: 'points',
+    maxSelectable: 1
+  },
+  {
+    id: InheritanceType.DISCOVERED_MUTATIONS,
+    name: '变异研究',
+    description: '继承已发现的变异体图鉴记录',
+    icon: '🔬',
+    cost: 2,
+    costType: 'points',
+    maxSelectable: 1
+  },
+  {
+    id: InheritanceType.COLLECTION_PROGRESS,
+    name: '图鉴进度',
+    description: '继承花瓣图鉴的解锁进度',
+    icon: '📖',
+    cost: 2,
+    costType: 'points',
+    maxSelectable: 1
+  },
+  {
+    id: InheritanceType.EFFICIENCY_BOOST,
+    name: '效率加成',
+    description: '下一局收集速度提升20%',
+    icon: '⚡',
+    cost: 3,
+    costType: 'points',
+    maxSelectable: 1
+  },
+  {
+    id: InheritanceType.GOAL_PROGRESS,
+    name: '目标追踪',
+    description: '继承未完成目标的进度',
+    icon: '🎯',
+    cost: 1,
+    costType: 'points',
+    maxSelectable: 1
+  }
+];
+
+export const EFFICIENCY_RATING = {
+  S: { minScore: 90, color: '#ffd700', label: '完美' },
+  A: { minScore: 75, color: '#c8a2ff', label: '优秀' },
+  B: { minScore: 60, color: '#88ccff', label: '良好' },
+  C: { minScore: 40, color: '#a8e6cf', label: '普通' },
+  D: { minScore: 0, color: '#888888', label: '加油' }
+};
+
+export const MAX_INHERITANCE_POINTS = 5;
+export const PETAL_RESERVE_RATIO = 0.1;
+export const EFFICIENCY_BOOST_RATIO = 0.2;

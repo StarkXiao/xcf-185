@@ -1,11 +1,20 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS } from '../config/GameConfig';
+import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { PetalType } from '../types';
+import { PetalType, InheritanceOption, InheritanceType, ReviewData } from '../types';
 
 export class ResultScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private reviewData!: ReviewData;
+  private currentPanelIndex: number = 0;
+  private totalPanels: number = 5;
+  private scrollContainer!: Phaser.GameObjects.Container;
+  private inheritanceOptions: InheritanceOption[] = [];
+  private inheritanceUIRefs: Map<number, { cardBg: Phaser.GameObjects.Graphics; costText: Phaser.GameObjects.Text; costBg: Phaser.GameObjects.Graphics }> = new Map();
+  private availablePoints: number = 0;
+  private selectedInheritance: InheritanceType[] = [];
+  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '继承策略'];
 
   constructor() {
     super('Result');
@@ -14,6 +23,10 @@ export class ResultScene extends Phaser.Scene {
   create(): void {
     AudioManager.getInstance().setScene(this);
     AudioManager.getInstance().playSfx('sfx_wakeup', 0.8);
+
+    this.reviewData = SaveManager.getInstance().getReviewData();
+    this.inheritanceOptions = this.reviewData.inheritanceOptions;
+    this.availablePoints = SaveManager.getInstance().calculateAvailablePoints();
 
     this.createBackground();
     this.createWakeUpAnimation();
@@ -72,10 +85,10 @@ export class ResultScene extends Phaser.Scene {
 
   private createWakeUpAnimation(): void {
     const centerX = GAME_WIDTH / 2;
-    const centerY = GAME_HEIGHT * 0.4;
+    const centerY = GAME_HEIGHT * 0.25;
 
-    const wakeupPetal = this.add.image(centerX, centerY - 100, `petal_${PetalType.WAKEUP}`)
-      .setDisplaySize(150, 150)
+    const wakeupPetal = this.add.image(centerX, centerY, `petal_${PetalType.WAKEUP}`)
+      .setDisplaySize(120, 120)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setAlpha(0)
       .setScale(0);
@@ -97,7 +110,7 @@ export class ResultScene extends Phaser.Scene {
       ease: 'Cubic.Out'
     });
 
-    this.particles = this.add.particles(centerX, centerY - 100, 'pixel_white', {
+    this.particles = this.add.particles(centerX, centerY, 'pixel_white', {
       lifespan: 2000,
       speed: { min: 50, max: 150 },
       angle: { min: 0, max: 360 },
@@ -114,14 +127,14 @@ export class ResultScene extends Phaser.Scene {
 
     const title = this.add.text(centerX, centerY + 80, '恋人已苏醒', {
       fontFamily: 'Arial',
-      fontSize: '48px',
+      fontSize: '42px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5).setAlpha(0);
 
     const titleGlow = this.add.text(centerX, centerY + 80, '恋人已苏醒', {
       fontFamily: 'Arial',
-      fontSize: '48px',
+      fontSize: '42px',
       color: '#ff6b9d',
       fontStyle: 'bold'
     }).setOrigin(0.5).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
@@ -134,9 +147,9 @@ export class ResultScene extends Phaser.Scene {
       ease: 'Cubic.Out'
     });
 
-    const subtitle = this.add.text(centerX, centerY + 140, '在梦境森林中，你们终于重逢', {
+    const subtitle = this.add.text(centerX, centerY + 130, '在梦境森林中，你们终于重逢', {
       fontFamily: 'Arial',
-      fontSize: '20px',
+      fontSize: '18px',
       color: '#a8e6cf',
       align: 'center'
     }).setOrigin(0.5).setAlpha(0);
@@ -149,30 +162,110 @@ export class ResultScene extends Phaser.Scene {
       ease: 'Cubic.Out'
     });
 
-    this.time.delayedCall(3000, () => {
-      this.createStatsPanel();
+    const scoreText = this.add.text(centerX, centerY + 170, `总分: ${this.reviewData.totalScore}`, {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffd700',
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setAlpha(0);
+
+    this.tweens.add({
+      targets: scoreText,
+      alpha: 1,
+      duration: 1000,
+      delay: 3000,
+      ease: 'Cubic.Out'
+    });
+
+    this.time.delayedCall(3500, () => {
+      this.createReviewPanels();
     });
   }
 
-  private createStatsPanel(): void {
+  private createReviewPanels(): void {
+    const panelStartY = GAME_HEIGHT * 0.42;
+    const panelHeight = GAME_HEIGHT * 0.42;
+
+    this.scrollContainer = this.add.container(0, panelStartY).setAlpha(0);
+
+    this.createPanelIndicators();
+
+    this.createBasicStatsPanel(0);
+    this.createEfficiencyPanel(1);
+    this.createMilestonesPanel(2);
+    this.createRareDropsPanel(3);
+    this.createInheritancePanel(4);
+
+    this.tweens.add({
+      targets: this.scrollContainer,
+      alpha: 1,
+      duration: 800,
+      ease: 'Cubic.Out'
+    });
+
+    this.createNavigationButtons();
+    this.createBottomButtons(panelStartY + panelHeight + 20);
+  }
+
+  private createPanelIndicators(): void {
+    const indicatorY = -30;
+    const indicatorSpacing = 15;
+    const totalWidth = (this.panelTitles.length - 1) * indicatorSpacing;
+    const startX = GAME_WIDTH / 2 - totalWidth / 2;
+
+    this.panelTitles.forEach((title, index) => {
+      const indicator = this.add.circle(startX + index * indicatorSpacing, indicatorY, 4, 0x888888).setAlpha(0.5);
+      indicator.setData('index', index);
+      
+      if (index === 0) {
+        indicator.setFillStyle(0xff6b9d, 1);
+        indicator.setScale(1.3);
+      }
+
+      this.scrollContainer.add(indicator);
+
+      indicator.setInteractive({ useHandCursor: true });
+      indicator.on('pointerdown', () => {
+        this.switchToPanel(index);
+      });
+    });
+  }
+
+  private updatePanelIndicators(): void {
+    this.scrollContainer.each((child: Phaser.GameObjects.GameObject) => {
+      const arcChild = child as Phaser.GameObjects.Arc;
+      if (child.type === 'Arc' && typeof arcChild.getData === 'function' && arcChild.getData('index') !== undefined) {
+        const idx = arcChild.getData('index') as number;
+        if (idx === this.currentPanelIndex) {
+          arcChild.setFillStyle(0xff6b9d, 1);
+          arcChild.setScale(1.3);
+        } else {
+          arcChild.setFillStyle(0x888888, 0.5);
+          arcChild.setScale(1);
+        }
+      }
+    });
+  }
+
+  private createBasicStatsPanel(panelIndex: number): void {
     const state = SaveManager.getInstance().getGameState();
-    const panelY = GAME_HEIGHT * 0.65;
-    const panelWidth = GAME_WIDTH - 80;
-    const panelHeight = 400;
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+    const contentWidth = panelWidth - 40;
 
     const panelBg = this.add.graphics();
     panelBg.fillStyle(0x0a0514, 0.9);
-    panelBg.fillRoundedRect(40, panelY, panelWidth, panelHeight, 20);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
     panelBg.lineStyle(3, 0xa8e6cf, 0.5);
-    panelBg.strokeRoundedRect(40, panelY, panelWidth, panelHeight, 20);
-    panelBg.setAlpha(0);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
 
-    const statsTitle = this.add.text(GAME_WIDTH / 2, panelY + 40, '游戏统计', {
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '本局统计', {
       fontFamily: 'Arial',
-      fontSize: '28px',
+      fontSize: '24px',
       color: '#ffffff',
       fontStyle: 'bold'
-    }).setOrigin(0.5).setAlpha(0);
+    }).setOrigin(0.5);
 
     const formatTime = (seconds: number): string => {
       const mins = Math.floor(seconds / 60);
@@ -181,78 +274,652 @@ export class ResultScene extends Phaser.Scene {
     };
 
     const stats = [
-      { label: '游戏时长', value: formatTime(state.playTime), color: '#a8e6cf' },
-      { label: '收集花瓣', value: `${state.totalCollected}朵`, color: '#ffe66d' },
-      { label: '合成次数', value: `${state.totalSynthesized}次`, color: '#ff6b9d' },
-      { label: '解锁花瓣', value: `${state.unlockedPetals.length}/${Object.values(PetalType).length}种`, color: '#88ccff' }
+      { label: '游戏时长', value: formatTime(state.playTime), color: '#a8e6cf', icon: '⏱️' },
+      { label: '收集花瓣', value: `${state.totalCollected}朵`, color: '#ffe66d', icon: '🌸' },
+      { label: '合成次数', value: `${state.totalSynthesized}次`, color: '#ff6b9d', icon: '⚗️' },
+      { label: '变异次数', value: `${state.totalMutations}次`, color: '#c8a2ff', icon: '✨' },
+      { label: '失败次数', value: `${state.totalFailures}次`, color: '#ff8888', icon: '💔' },
+      { label: '解锁花瓣', value: `${state.unlockedPetals.length}/${Object.values(PetalType).length}种`, color: '#88ccff', icon: '📖' }
     ];
 
-    const statTexts: Phaser.GameObjects.Text[] = [];
     stats.forEach((stat, index) => {
-      const labelText = this.add.text(80, panelY + 100 + index * 60, stat.label, {
+      const rowY = panelY + 80 + index * 52;
+      
+      const iconText = this.add.text(50, rowY, stat.icon, {
         fontFamily: 'Arial',
-        fontSize: '20px',
-        color: '#888888'
-      }).setOrigin(0, 0.5).setAlpha(0);
+        fontSize: '20px'
+      }).setOrigin(0, 0.5);
 
-      const valueText = this.add.text(GAME_WIDTH - 80, panelY + 100 + index * 60, stat.value, {
+      const labelText = this.add.text(85, rowY, stat.label, {
         fontFamily: 'Arial',
-        fontSize: '20px',
+        fontSize: '18px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const valueText = this.add.text(GAME_WIDTH - 50, rowY, stat.value, {
+        fontFamily: 'Arial',
+        fontSize: '18px',
         color: stat.color,
         fontStyle: 'bold'
-      }).setOrigin(1, 0.5).setAlpha(0);
+      }).setOrigin(1, 0.5);
 
-      statTexts.push(labelText, valueText);
+      this.scrollContainer.add([panelBg, panelTitle, iconText, labelText, valueText]);
     });
 
-    this.tweens.add({
-      targets: [panelBg, statsTitle, ...statTexts],
-      alpha: 1,
-      duration: 800,
-      delay: this.tweens.stagger(100, {}),
-      ease: 'Cubic.Out'
-    });
-
-    const petalIconsContainer = this.add.container(GAME_WIDTH / 2, panelY + 340).setAlpha(0);
+    const petalIconsContainer = this.add.container(GAME_WIDTH / 2, panelY + 385);
     
     state.unlockedPetals.forEach((type, index) => {
       const config = PETAL_CONFIGS[type];
-      const spacing = 60;
+      const spacing = 48;
       const startX = -(state.unlockedPetals.length - 1) * spacing / 2;
       
       const petalIcon = this.add.image(startX + index * spacing, 0, `petal_${type}`)
-        .setDisplaySize(45, 45)
+        .setDisplaySize(40, 40)
         .setBlendMode(Phaser.BlendModes.ADD);
       
       petalIconsContainer.add(petalIcon);
     });
 
-    this.tweens.add({
-      targets: petalIconsContainer,
-      alpha: 1,
-      duration: 800,
-      delay: 1500,
-      ease: 'Cubic.Out'
-    });
-
-    this.createButtons(panelY + panelHeight + 30);
+    this.scrollContainer.add(petalIconsContainer);
   }
 
-  private createButtons(y: number): void {
-    const btnWidth = 260;
-    const btnHeight = 65;
-    const spacing = 30;
+  private createEfficiencyPanel(panelIndex: number): void {
+    const efficiency = this.reviewData.efficiencyStats;
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xffd700, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '效率分析', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    const ratingConfig = EFFICIENCY_RATING[efficiency.efficiencyRating];
+    const ratingText = this.add.text(GAME_WIDTH / 2, panelY + 85, efficiency.efficiencyRating, {
+      fontFamily: 'Arial',
+      fontSize: '64px',
+      color: ratingConfig.color,
+      fontStyle: 'bold'
+    }).setOrigin(0.5).setBlendMode(Phaser.BlendModes.ADD);
+
+    const ratingLabel = this.add.text(GAME_WIDTH / 2, panelY + 130, ratingConfig.label, {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: ratingConfig.color
+    }).setOrigin(0.5);
+
+    const scoreText = this.add.text(GAME_WIDTH / 2, panelY + 160, `效率得分: ${efficiency.totalEfficiencyScore}分`, {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#aaaaaa'
+    }).setOrigin(0.5);
+
+    const efficiencyStats = [
+      { label: '收集效率', value: `${efficiency.petalPerMinute}/分钟`, color: '#a8e6cf', icon: '🌸' },
+      { label: '合成效率', value: `${efficiency.synthesisPerMinute}/分钟`, color: '#ff6b9d', icon: '⚗️' },
+      { label: '合成成功率', value: `${efficiency.successRate}%`, color: '#ffe66d', icon: '✅' },
+      { label: '变异触发率', value: `${efficiency.mutationRate}%`, color: '#c8a2ff', icon: '✨' },
+      { label: '平均合成耗时', value: `${efficiency.avgSynthesisTime}秒`, color: '#88ccff', icon: '⏱️' }
+    ];
+
+    efficiencyStats.forEach((stat, index) => {
+      const rowY = panelY + 200 + index * 42;
+      
+      const iconText = this.add.text(50, rowY, stat.icon, {
+        fontFamily: 'Arial',
+        fontSize: '18px'
+      }).setOrigin(0, 0.5);
+
+      const labelText = this.add.text(85, rowY, stat.label, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const valueText = this.add.text(GAME_WIDTH - 50, rowY, stat.value, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: stat.color,
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5);
+
+      this.scrollContainer.add([panelBg, panelTitle, ratingText, ratingLabel, scoreText, iconText, labelText, valueText]);
+    });
+  }
+
+  private createMilestonesPanel(panelIndex: number): void {
+    const milestones = this.reviewData.milestones;
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xc8a2ff, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '关键节点', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.scrollContainer.add([panelBg, panelTitle]);
+
+    const timelineContainer = this.add.container(0, 0);
+    const timelineMask = this.add.graphics();
+    timelineMask.fillRect(30, panelY + 60, panelWidth, 350);
+    timelineContainer.setMask(timelineMask.createGeometryMask());
+
+    const timelineContent = this.add.container(0, 0);
+    timelineContainer.add(timelineContent);
+
+    const formatPlayTime = (seconds: number): string => {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      if (mins > 0) {
+        return `${mins}分${secs}秒`;
+      }
+      return `${secs}秒`;
+    };
+
+    const milestoneY = 0;
+    const milestoneSpacing = 75;
+
+    milestones.forEach((milestone, index) => {
+      const itemY = panelY + 100 + index * milestoneSpacing;
+      
+      const iconBg = this.add.circle(70, itemY, 22, milestone.color, 0.3);
+      iconBg.setStrokeStyle(2, milestone.color, 0.8);
+
+      const iconText = this.add.text(70, itemY, milestone.icon, {
+        fontFamily: 'Arial',
+        fontSize: '20px'
+      }).setOrigin(0.5);
+
+      const titleText = this.add.text(110, itemY - 12, milestone.title, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+
+      const descText = this.add.text(110, itemY + 12, milestone.description, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const timeText = this.add.text(GAME_WIDTH - 50, itemY, formatPlayTime(milestone.playTimeAt), {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#aaaaaa'
+      }).setOrigin(1, 0.5);
+
+      if (index < milestones.length - 1) {
+        const connectorLine = this.add.line(0, 0, 70, itemY + 25, 70, itemY + milestoneSpacing - 25, 0x666666, 0.3);
+        connectorLine.setLineWidth(2);
+        timelineContent.add(connectorLine);
+      }
+
+      timelineContent.add([iconBg, iconText, titleText, descText, timeText]);
+    });
+
+    const totalHeight = milestones.length * milestoneSpacing + 40;
+    if (totalHeight > 350) {
+      let isDragging = false;
+      let startY = 0;
+      let contentY = 0;
+      const maxScroll = Math.max(0, totalHeight - 350);
+
+      const scrollBg = this.add.zone(GAME_WIDTH / 2, panelY + 235, panelWidth, 350);
+      scrollBg.setInteractive();
+
+      scrollBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        isDragging = true;
+        startY = pointer.y - contentY;
+      });
+
+      scrollBg.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (isDragging) {
+          contentY = pointer.y - startY;
+          contentY = Math.max(-maxScroll, Math.min(0, contentY));
+          timelineContent.y = contentY;
+        }
+      });
+
+      scrollBg.on('pointerup', () => {
+        isDragging = false;
+      });
+
+      scrollBg.on('pointerout', () => {
+        isDragging = false;
+      });
+
+      this.scrollContainer.add(scrollBg);
+    }
+
+    this.scrollContainer.add([timelineContainer, timelineMask]);
+  }
+
+  private createRareDropsPanel(panelIndex: number): void {
+    const rareDrops = this.reviewData.rareDrops;
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xffd700, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '稀有产出', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.scrollContainer.add([panelBg, panelTitle]);
+
+    if (rareDrops.length === 0) {
+      const noRareText = this.add.text(GAME_WIDTH / 2, panelY + 230, '暂无稀有产出', {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#666666'
+      }).setOrigin(0.5);
+      this.scrollContainer.add(noRareText);
+      return;
+    }
+
+    const container = this.add.container(0, 0);
+    const mask = this.add.graphics();
+    mask.fillRect(30, panelY + 60, panelWidth, 350);
+    container.setMask(mask.createGeometryMask());
+
+    const content = this.add.container(0, 0);
+    container.add(content);
+
+    const cols = 2;
+    const cardWidth = (panelWidth - 60) / cols;
+    const cardHeight = 150;
+    const cardSpacingX = 20;
+    const startX = 50;
+
+    rareDrops.forEach((drop, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const cardX = startX + col * (cardWidth + cardSpacingX);
+      const cardY = panelY + 80 + row * (cardHeight + 20);
+
+      const rarityConfig = RARITY_CONFIG[drop.rarity];
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(0x1a0a2e, 0.9);
+      cardBg.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+      cardBg.lineStyle(2, rarityConfig.glowColor, 0.6);
+      cardBg.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+
+      const petalImage = this.add.image(cardX + cardWidth / 2, cardY + 45, `petal_${drop.type}`)
+        .setDisplaySize(50, 50)
+        .setBlendMode(Phaser.BlendModes.ADD);
+
+      const rarityLabel = this.add.text(cardX + cardWidth / 2, cardY + 85, rarityConfig.label, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: rarityConfig.color,
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      const nameText = this.add.text(cardX + cardWidth / 2, cardY + 105, drop.name, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      const countText = this.add.text(cardX + cardWidth / 2, cardY + 125, `×${drop.count}`, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: '#aaaaaa'
+      }).setOrigin(0.5);
+
+      const glow = this.add.graphics();
+      glow.lineStyle(1, rarityConfig.glowColor, 0.3);
+      glow.strokeRoundedRect(cardX - 2, cardY - 2, cardWidth + 4, cardHeight + 4, 14);
+
+      content.add([cardBg, petalImage, rarityLabel, nameText, countText, glow]);
+    });
+
+    const totalHeight = Math.ceil(rareDrops.length / cols) * (cardHeight + 20);
+    if (totalHeight > 350) {
+      let isDragging = false;
+      let startY = 0;
+      let contentY = 0;
+      const maxScroll = Math.max(0, totalHeight - 350);
+
+      const scrollBg = this.add.zone(GAME_WIDTH / 2, panelY + 235, panelWidth, 350);
+      scrollBg.setInteractive();
+
+      scrollBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        isDragging = true;
+        startY = pointer.y - contentY;
+      });
+
+      scrollBg.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (isDragging) {
+          contentY = pointer.y - startY;
+          contentY = Math.max(-maxScroll, Math.min(0, contentY));
+          content.y = contentY;
+        }
+      });
+
+      scrollBg.on('pointerup', () => {
+        isDragging = false;
+      });
+
+      scrollBg.on('pointerout', () => {
+        isDragging = false;
+      });
+
+      this.scrollContainer.add(scrollBg);
+    }
+
+    this.scrollContainer.add([container, mask]);
+  }
+
+  private createInheritancePanel(panelIndex: number): void {
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xff6b9d, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '继承策略', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    const pointsText = this.add.text(GAME_WIDTH / 2, panelY + 70, `可用点数: ${this.availablePoints} / ${SaveManager.getInstance().getMaxInheritancePoints()}`, {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    this.scrollContainer.add([panelBg, panelTitle, pointsText]);
+
+    const container = this.add.container(0, 0);
+    const mask = this.add.graphics();
+    mask.fillRect(30, panelY + 90, panelWidth, 320);
+    container.setMask(mask.createGeometryMask());
+
+    const content = this.add.container(0, 0);
+    container.add(content);
+
+    const cardWidth = panelWidth - 40;
+    const cardHeight = 85;
+
+    this.inheritanceOptions.forEach((option, index) => {
+      const cardX = 50;
+      const cardY = panelY + 100 + index * (cardHeight + 10);
+
+      const isSelected = this.selectedInheritance.includes(option.id);
+      const canAfford = this.availablePoints >= option.cost || isSelected;
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(isSelected ? 0x2a1a4e : 0x1a0a2e, 0.9);
+      cardBg.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+      cardBg.lineStyle(2, isSelected ? 0xff6b9d : 0x666666, isSelected ? 0.8 : 0.5);
+      cardBg.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+
+      const iconText = this.add.text(cardX + 25, cardY + cardHeight / 2, option.icon, {
+        fontFamily: 'Arial',
+        fontSize: '28px'
+      }).setOrigin(0, 0.5);
+
+      const nameText = this.add.text(cardX + 70, cardY + 25, option.name, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+
+      const descText = this.add.text(cardX + 70, cardY + 50, option.description, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const costBg = this.add.graphics();
+      const costColor = isSelected ? 0xff6b9d : (canAfford ? 0xffd700 : 0x666666);
+      costBg.fillStyle(costColor, 0.2);
+      costBg.fillRoundedRect(cardX + cardWidth - 80, cardY + 25, 70, 35, 8);
+      costBg.lineStyle(1, costColor, 0.5);
+      costBg.strokeRoundedRect(cardX + cardWidth - 80, cardY + 25, 70, 35, 8);
+
+      const costText = this.add.text(cardX + cardWidth - 45, cardY + 42, `${option.cost}点`, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: isSelected ? '#ff6b9d' : (canAfford ? '#ffd700' : '#666666'),
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+      const hitZone = this.add.zone(cardX + cardWidth / 2, cardY + cardHeight / 2, cardWidth, cardHeight);
+      hitZone.setInteractive({ useHandCursor: true });
+
+      hitZone.on('pointerover', () => {
+        if (canAfford || isSelected) {
+          this.tweens.add({
+            targets: [cardBg],
+            scale: 1.02,
+            duration: 200
+          });
+        }
+      });
+
+      hitZone.on('pointerout', () => {
+        this.tweens.add({
+          targets: [cardBg],
+          scale: 1,
+          duration: 200
+        });
+      });
+
+      hitZone.on('pointerdown', () => {
+        AudioManager.getInstance().playSfx('sfx_click');
+        this.toggleInheritanceOption(option, index);
+      });
+
+      content.add([cardBg, iconText, nameText, descText, costBg, costText, hitZone]);
+      this.inheritanceUIRefs.set(index, { cardBg, costText, costBg });
+    });
+
+    const totalHeight = this.inheritanceOptions.length * (cardHeight + 10) + 20;
+    if (totalHeight > 320) {
+      let isDragging = false;
+      let startY = 0;
+      let contentY = 0;
+      const maxScroll = Math.max(0, totalHeight - 320);
+
+      const scrollBg = this.add.zone(GAME_WIDTH / 2, panelY + 250, panelWidth, 320);
+      scrollBg.setInteractive();
+
+      scrollBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        isDragging = true;
+        startY = pointer.y - contentY;
+      });
+
+      scrollBg.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (isDragging) {
+          contentY = pointer.y - startY;
+          contentY = Math.max(-maxScroll, Math.min(0, contentY));
+          content.y = contentY;
+        }
+      });
+
+      scrollBg.on('pointerup', () => {
+        isDragging = false;
+      });
+
+      scrollBg.on('pointerout', () => {
+        isDragging = false;
+      });
+
+      this.scrollContainer.add(scrollBg);
+    }
+
+    this.scrollContainer.add([container, mask]);
+  }
+
+  private toggleInheritanceOption(option: InheritanceOption, index: number): void {
+    const isSelected = this.selectedInheritance.includes(option.id);
+
+    if (isSelected) {
+      this.selectedInheritance = this.selectedInheritance.filter(id => id !== option.id);
+      this.availablePoints += option.cost;
+      option.selected = false;
+    } else {
+      if (this.availablePoints >= option.cost) {
+        this.selectedInheritance.push(option.id);
+        this.availablePoints -= option.cost;
+        option.selected = true;
+      } else {
+        return;
+      }
+    }
+
+    this.updateInheritanceUI();
+  }
+
+  private updateInheritanceUI(): void {
+    this.scrollContainer.each((child: Phaser.GameObjects.GameObject) => {
+      if (child.type === 'Text') {
+        const textChild = child as Phaser.GameObjects.Text;
+        if (textChild.text && textChild.text.includes('可用点数')) {
+          textChild.setText(`可用点数: ${this.availablePoints} / ${SaveManager.getInstance().getMaxInheritancePoints()}`);
+        }
+      }
+    });
+
+    this.inheritanceOptions.forEach((option, index) => {
+      const uiRef = this.inheritanceUIRefs.get(index);
+      if (!uiRef) return;
+
+      const { cardBg, costText, costBg } = uiRef;
+      const isSelected = option.selected;
+      const canAfford = this.availablePoints >= option.cost || isSelected;
+
+      cardBg.clear();
+      cardBg.fillStyle(isSelected ? 0x2a1a4e : 0x1a0a2e, 0.9);
+      cardBg.fillRoundedRect(50, 100 + index * 95, 610, 85, 12);
+      cardBg.lineStyle(2, isSelected ? 0xff6b9d : 0x666666, isSelected ? 0.8 : 0.5);
+      cardBg.strokeRoundedRect(50, 100 + index * 95, 610, 85, 12);
+
+      costBg.clear();
+      const costColor = isSelected ? 0xff6b9d : (canAfford ? 0xffd700 : 0x666666);
+      costBg.fillStyle(costColor, 0.2);
+      costBg.fillRoundedRect(580, 125, 70, 35, 8);
+      costBg.lineStyle(1, costColor, 0.5);
+      costBg.strokeRoundedRect(580, 125, 70, 35, 8);
+
+      costText.setColor(isSelected ? '#ff6b9d' : (canAfford ? '#ffd700' : '#666666'));
+    });
+  }
+
+  private createNavigationButtons(): void {
+    const prevBtn = this.createNavButton(60, GAME_HEIGHT * 0.78, '◀', () => {
+      if (this.currentPanelIndex > 0) {
+        this.switchToPanel(this.currentPanelIndex - 1);
+      }
+    });
+
+    const nextBtn = this.createNavButton(GAME_WIDTH - 60, GAME_HEIGHT * 0.78, '▶', () => {
+      if (this.currentPanelIndex < this.totalPanels - 1) {
+        this.switchToPanel(this.currentPanelIndex + 1);
+      }
+    });
+
+    this.tweens.add({
+      targets: [prevBtn, nextBtn],
+      alpha: 1,
+      duration: 800,
+      delay: 500,
+      ease: 'Cubic.Out'
+    });
+  }
+
+  private createNavButton(x: number, y: number, text: string, callback: () => void): Phaser.GameObjects.Container {
+    const container = this.add.container(x, y).setAlpha(0);
+
+    const bg = this.add.circle(0, 0, 25, 0x2a1a4e, 0.8);
+    bg.setStrokeStyle(2, 0xa8e6cf, 0.6);
+
+    const btnText = this.add.text(0, 0, text, {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    container.add([bg, btnText]);
+
+    const hitZone = this.add.zone(0, 0, 50, 50).setInteractive({ useHandCursor: true });
+    hitZone.on('pointerdown', () => {
+      AudioManager.getInstance().playSfx('sfx_click');
+      callback();
+    });
+
+    return container;
+  }
+
+  private switchToPanel(index: number): void {
+    if (index < 0 || index >= this.totalPanels) return;
+
+    this.currentPanelIndex = index;
+
+    this.tweens.add({
+      targets: this.scrollContainer,
+      x: -index * GAME_WIDTH,
+      duration: 400,
+      ease: 'Cubic.InOut',
+      onUpdate: () => {
+        this.updatePanelIndicators();
+      }
+    });
+  }
+
+  private createBottomButtons(y: number): void {
+    const btnWidth = 220;
+    const btnHeight = 60;
+    const spacing = 20;
 
     const restartBtn = this.createButton(
       GAME_WIDTH / 2 - btnWidth / 2 - spacing / 2,
       y,
       btnWidth,
       btnHeight,
-      '再玩一次',
+      '继承并再玩',
       0xff6b9d,
       () => {
-        SaveManager.getInstance().resetGame();
-        this.scene.start('Game', { continueGame: false });
+        SaveManager.getInstance().applyInheritance(this.selectedInheritance);
+        this.scene.start('Game', { continueGame: false, useInheritance: true });
       }
     );
 
@@ -274,7 +941,7 @@ export class ResultScene extends Phaser.Scene {
         alpha: 1,
         y: '+=20',
         duration: 600,
-        delay: 2000 + index * 200,
+        delay: 1000 + index * 200,
         ease: 'Back.Out'
       });
     });
@@ -299,7 +966,7 @@ export class ResultScene extends Phaser.Scene {
 
     const btnText = this.add.text(width / 2, height / 2, text, {
       fontFamily: 'Arial',
-      fontSize: '20px',
+      fontSize: '18px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5);

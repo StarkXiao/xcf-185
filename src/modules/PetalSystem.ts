@@ -21,6 +21,7 @@ export class PetalSystem {
   private eventListeners: Array<{ event: string; callback: (data: any) => void }> = [];
   private player: Phaser.Physics.Arcade.Sprite | null = null;
   private manualCollectRange: number = 150;
+  private efficiencyBoost: number = 0;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -32,6 +33,10 @@ export class PetalSystem {
 
   public setPlayer(player: Phaser.Physics.Arcade.Sprite | null): void {
     this.player = player;
+  }
+
+  public setEfficiencyBoost(boost: number): void {
+    this.efficiencyBoost = boost;
   }
 
   public create(): void {
@@ -244,8 +249,13 @@ export class PetalSystem {
     if (player !== this.player) {
       this.player = player;
     }
+    
+    const adjustedInterval = this.efficiencyBoost > 0 
+      ? PETAL_SPAWN_INTERVAL / (1 + this.efficiencyBoost) 
+      : PETAL_SPAWN_INTERVAL;
+    
     this.spawnTimer += delta;
-    if (this.spawnTimer >= PETAL_SPAWN_INTERVAL && this.petalGroup && this.petalGroup.getLength() < MAX_PETALS_ON_SCREEN) {
+    if (this.spawnTimer >= adjustedInterval && this.petalGroup && this.petalGroup.getLength() < MAX_PETALS_ON_SCREEN) {
       this.spawnPetal();
       this.spawnTimer = 0;
     }

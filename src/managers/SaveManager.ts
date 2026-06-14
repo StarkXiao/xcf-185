@@ -10,7 +10,14 @@ import {
   StatusMessage,
   StatusType,
   SynthesisResultData,
-  SynthesisResultType
+  SynthesisResultType,
+  EfficiencyStats,
+  KeyMilestone,
+  RareDrop,
+  InheritanceType,
+  InheritanceOption,
+  InheritanceData,
+  ReviewData
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -24,7 +31,15 @@ import {
   MAX_RESOURCE_TREND_POINTS,
   MAX_SYNTHESIS_RECORDS,
   MAX_STATUS_MESSAGES,
-  PETAL_CONFIGS
+  PETAL_CONFIGS,
+  MILESTONE_CONFIG,
+  RARITY_CONFIG,
+  INHERITANCE_OPTIONS,
+  EFFICIENCY_RATING,
+  MAX_INHERITANCE_POINTS,
+  PETAL_RESERVE_RATIO,
+  EFFICIENCY_BOOST_RATIO,
+  COLLECT_RANGE_GROWTH
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -676,5 +691,298 @@ export class SaveManager {
       this.saveGame(state);
     }
     return state;
+  }
+
+  // === Review & Efficiency Stats ===
+  public calculateEfficiencyStats(): EfficiencyStats {
+    const state = this.getGameState();
+    const playTimeMinutes = state.playTime / 60;
+
+    const petalPerMinute = playTimeMinutes > 0 ? state.totalCollected / playTimeMinutes : 0;
+    const synthesisPerMinute = playTimeMinutes > 0 ? state.totalSynthesized / playTimeMinutes : 0;
+    
+    const totalSynthesisAttempts = state.totalSynthesized + state.totalFailures;
+    const successRate = totalSynthesisAttempts > 0 
+      ? (state.totalSynthesized / totalSynthesisAttempts) * 100 
+      : 0;
+    
+    const mutationRate = totalSynthesisAttempts > 0 
+      ? (state.totalMutations / totalSynthesisAttempts) * 100 
+      : 0;
+
+    const avgSynthesisTime = state.totalSynthesized > 0 
+      ? state.playTime / state.totalSynthesized 
+      : 0;
+
+    const petalScore = Math.min(petalPerMinute / 3, 1) * 30;
+    const synthesisScore = Math.min(synthesisPerMinute / 0.5, 1) * 25;
+    const successScore = (successRate / 100) * 25;
+    const mutationScore = Math.min(mutationRate / 15, 1) * 20;
+
+    const totalEfficiencyScore = Math.round(petalScore + synthesisScore + successScore + mutationScore);
+
+    let efficiencyRating: EfficiencyStats['efficiencyRating'] = 'D';
+    if (totalEfficiencyScore >= EFFICIENCY_RATING.S.minScore) efficiencyRating = 'S';
+    else if (totalEfficiencyScore >= EFFICIENCY_RATING.A.minScore) efficiencyRating = 'A';
+    else if (totalEfficiencyScore >= EFFICIENCY_RATING.B.minScore) efficiencyRating = 'B';
+    else if (totalEfficiencyScore >= EFFICIENCY_RATING.C.minScore) efficiencyRating = 'C';
+
+    return {
+      petalPerMinute: Number(petalPerMinute.toFixed(2)),
+      synthesisPerMinute: Number(synthesisPerMinute.toFixed(2)),
+      successRate: Number(successRate.toFixed(1)),
+      mutationRate: Number(mutationRate.toFixed(1)),
+      avgSynthesisTime: Number(avgSynthesisTime.toFixed(1)),
+      totalEfficiencyScore,
+      efficiencyRating
+    };
+  }
+
+  public generateMilestones(): KeyMilestone[] {
+    const state = this.getGameState();
+    const milestones: KeyMilestone[] = [];
+    const now = Date.now();
+
+    const addMilestone = (
+      id: string,
+      type: KeyMilestone['type'],
+      configKey: keyof typeof MILESTONE_CONFIG,
+      description: string,
+      playTimeAt: number
+    ) => {
+      const config = MILESTONE_CONFIG[configKey];
+      milestones.push({
+        id,
+        type,
+        title: config.title,
+        description,
+        timestamp: now,
+        playTimeAt,
+        icon: config.icon,
+        color: config.color
+      });
+    };
+
+    if (state.totalCollected > 0) {
+      addMilestone('first_collect', 'collect', 'firstCollect', '收集到第一朵花瓣', 0);
+    }
+
+    if (state.totalSynthesized > 0) {
+      const firstSynthesisTime = state.synthesisRecords.length > 0
+        ? this.estimatePlayTimeAt(state.synthesisRecords[state.synthesisRecords.length - 1].timestamp)
+        : state.playTime * 0.3;
+      addMilestone('first_synthesis', 'synthesize', 'firstSynthesis', '完成第一次花瓣合成', firstSynthesisTime);
+    }
+
+    if (state.totalMutations > 0) {
+      const mutationRecord = state.synthesisRecords.find(r => r.resultType === SynthesisResultType.MUTATION);
+      const mutationTime = mutationRecord
+        ? this.estimatePlayTimeAt(mutationRecord.timestamp)
+        : state.playTime * 0.5;
+      addMilestone('first_mutation', 'mutation', 'firstMutation', '发现首次变异花瓣', mutationTime);
+    }
+
+    const unlockTimes = this.estimateUnlockTimes(state);
+    
+    if (state.unlockedPetals.includes(PetalType.STARLIGHT)) {
+      addMilestone('unlock_starlight', 'unlock', 'unlockStarlight', '解锁星光花瓣', unlockTimes.get(PetalType.STARLIGHT) || state.playTime * 0.2);
+    }
+    if (state.unlockedPetals.includes(PetalType.DEW)) {
+      addMilestone('unlock_dew', 'unlock', 'unlockDew', '解锁露珠花瓣', unlockTimes.get(PetalType.DEW) || state.playTime * 0.35);
+    }
+    if (state.unlockedPetals.includes(PetalType.GLOWING)) {
+      addMilestone('unlock_glowing', 'unlock', 'unlockGlowing', '解锁荧光花瓣', unlockTimes.get(PetalType.GLOWING) || state.playTime * 0.5);
+    }
+    if (state.unlockedPetals.includes(PetalType.DREAM)) {
+      addMilestone('unlock_dream', 'unlock', 'unlockDream', '解锁梦境花瓣', unlockTimes.get(PetalType.DREAM) || state.playTime * 0.65);
+    }
+    if (state.unlockedPetals.includes(PetalType.ETERNAL)) {
+      addMilestone('unlock_eternal', 'unlock', 'unlockEternal', '解锁永恒花瓣', unlockTimes.get(PetalType.ETERNAL) || state.playTime * 0.8);
+    }
+    if (state.unlockedPetals.includes(PetalType.WAKEUP)) {
+      addMilestone('unlock_wakeup', 'unlock', 'unlockWakeup', '合成唤醒之花', state.playTime);
+    }
+
+    if (state.totalCollected >= 50) {
+      const collect50Time = state.playTime * (50 / state.totalCollected);
+      addMilestone('collect_50', 'collect', 'collect50', '累计收集50朵花瓣', collect50Time);
+    }
+    if (state.totalCollected >= 100) {
+      const collect100Time = state.playTime * (100 / state.totalCollected);
+      addMilestone('collect_100', 'collect', 'collect100', '累计收集100朵花瓣', collect100Time);
+    }
+    if (state.totalSynthesized >= 10) {
+      const synthesis10Time = state.playTime * (10 / Math.max(state.totalSynthesized, 1));
+      addMilestone('synthesis_10', 'synthesize', 'synthesis10', '完成10次成功合成', synthesis10Time);
+    }
+
+    if (state.isCompleted) {
+      addMilestone('complete_game', 'complete', 'completeGame', '成功唤醒恋人，通关游戏', state.playTime);
+    }
+
+    return milestones.sort((a, b) => a.playTimeAt - b.playTimeAt);
+  }
+
+  private estimatePlayTimeAt(timestamp: number): number {
+    const state = this.getGameState();
+    const startTime = state.lastSaveTime - state.playTime * 1000;
+    return Math.max(0, (timestamp - startTime) / 1000);
+  }
+
+  private estimateUnlockTimes(state: GameState): Map<PetalType, number> {
+    const unlockTimes = new Map<PetalType, number>();
+    const baseTime = state.playTime / Math.max(state.unlockedPetals.length, 1);
+    
+    state.unlockedPetals.forEach((type, index) => {
+      unlockTimes.set(type, baseTime * (index + 0.5));
+    });
+    
+    return unlockTimes;
+  }
+
+  public findRareDrops(): RareDrop[] {
+    const state = this.getGameState();
+    const rareDrops: RareDrop[] = [];
+
+    const rarePetalTypes: { type: PetalType; rarity: RareDrop['rarity'] }[] = [
+      { type: PetalType.WAKEUP, rarity: 'legendary' },
+      { type: PetalType.ETERNAL, rarity: 'epic' },
+      { type: PetalType.DREAM, rarity: 'epic' },
+      { type: PetalType.DREAM_PHANTOM, rarity: 'epic' },
+      { type: PetalType.GLOWING_EMBER, rarity: 'rare' },
+      { type: PetalType.DEW_CRYSTAL, rarity: 'rare' },
+      { type: PetalType.STARLIGHT_BURST, rarity: 'rare' },
+      { type: PetalType.MOONLIGHT_SHIMMER, rarity: 'uncommon' },
+      { type: PetalType.GLOWING, rarity: 'uncommon' }
+    ];
+
+    rarePetalTypes.forEach(({ type, rarity }) => {
+      const count = state.petals[type] || 0;
+      if (count > 0) {
+        const config = PETAL_CONFIGS[type];
+        rareDrops.push({
+          type,
+          name: config.name,
+          count,
+          rarity,
+          obtainedAt: Date.now(),
+          description: config.description
+        });
+      }
+    });
+
+    const rarityOrder = { legendary: 0, epic: 1, rare: 2, uncommon: 3 };
+    return rareDrops.sort((a, b) => rarityOrder[a.rarity] - rarityOrder[b.rarity]);
+  }
+
+  public calculateTotalScore(): number {
+    const state = this.getGameState();
+    const efficiency = this.calculateEfficiencyStats();
+    
+    const completionBonus = state.isCompleted ? 500 : 0;
+    const collectScore = state.totalCollected * 2;
+    const synthesisScore = state.totalSynthesized * 10;
+    const mutationScore = state.totalMutations * 25;
+    const unlockScore = state.unlockedPetals.length * 50;
+    const efficiencyBonus = efficiency.totalEfficiencyScore * 2;
+    const speedBonus = state.isCompleted ? Math.max(0, 1000 - state.playTime) : 0;
+
+    return Math.round(
+      completionBonus +
+      collectScore +
+      synthesisScore +
+      mutationScore +
+      unlockScore +
+      efficiencyBonus +
+      speedBonus
+    );
+  }
+
+  // === Inheritance System ===
+  public getInheritanceOptions(): InheritanceOption[] {
+    return INHERITANCE_OPTIONS.map(opt => ({
+      ...opt,
+      selected: false
+    }));
+  }
+
+  public getMaxInheritancePoints(): number {
+    return MAX_INHERITANCE_POINTS;
+  }
+
+  public calculateAvailablePoints(): number {
+    const efficiency = this.calculateEfficiencyStats();
+    const ratingBonus: Record<string, number> = { S: 3, A: 2, B: 1, C: 0, D: 0 };
+    return MAX_INHERITANCE_POINTS + (ratingBonus[efficiency.efficiencyRating] || 0);
+  }
+
+  public applyInheritance(selectedOptions: InheritanceType[]): GameState {
+    const previousState = this.getGameState();
+    const newState = getInitialGameState();
+
+    selectedOptions.forEach(optionType => {
+      switch (optionType) {
+        case InheritanceType.PETAL_RESERVE:
+          Object.entries(previousState.petals).forEach(([type, count]) => {
+            const reserved = Math.floor(count * PETAL_RESERVE_RATIO);
+            if (reserved > 0) {
+              newState.petals[type as PetalType] = reserved;
+              if (!newState.unlockedPetals.includes(type as PetalType)) {
+                newState.unlockedPetals.push(type as PetalType);
+              }
+            }
+          });
+          break;
+
+        case InheritanceType.UNLOCKED_RECIPES:
+          newState.unlockedRecipes = [...previousState.unlockedRecipes];
+          break;
+
+        case InheritanceType.DISCOVERED_MUTATIONS:
+          newState.discoveredMutations = [...previousState.discoveredMutations];
+          break;
+
+        case InheritanceType.COLLECTION_PROGRESS:
+          newState.unlockedPetals = [...previousState.unlockedPetals];
+          break;
+
+        case InheritanceType.EFFICIENCY_BOOST:
+          newState.efficiencyBoost = EFFICIENCY_BOOST_RATIO;
+          break;
+
+        case InheritanceType.GOAL_PROGRESS:
+          previousState.goals.forEach((prevGoal, index) => {
+            if (index < newState.goals.length) {
+              newState.goals[index].currentCount = prevGoal.currentCount;
+              if (prevGoal.status === GoalStatus.COMPLETED || prevGoal.status === GoalStatus.CLAIMED) {
+                newState.goals[index].status = prevGoal.status;
+              }
+            }
+          });
+          break;
+      }
+    });
+
+    EventManager.getInstance().emit('inheritance:apply', {
+      data: {
+        selectedOptions,
+        inheritedPetals: newState.petals,
+        inheritedRecipes: newState.unlockedRecipes,
+        efficiencyBoost: (newState as any).efficiencyBoost || 0
+      }
+    });
+
+    this.saveGame(newState);
+    return newState;
+  }
+
+  public getReviewData(): ReviewData {
+    return {
+      efficiencyStats: this.calculateEfficiencyStats(),
+      milestones: this.generateMilestones(),
+      rareDrops: this.findRareDrops(),
+      inheritanceOptions: this.getInheritanceOptions(),
+      totalScore: this.calculateTotalScore()
+    };
   }
 }
