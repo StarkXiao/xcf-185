@@ -335,6 +335,36 @@ export interface ReviewData {
   totalScore: number;
 }
 
+export interface SaveValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  fixed: boolean;
+}
+
+export interface SaveBackupInfo {
+  version: string;
+  timestamp: number;
+  label?: string;
+  size: number;
+  isAuto: boolean;
+}
+
+export interface MigrationResult {
+  success: boolean;
+  fromVersion: string;
+  toVersion: string;
+  warnings: string[];
+}
+
+export interface SaveBackupData {
+  version: string;
+  timestamp: number;
+  gameState: GameState;
+  settings: SaveData['settings'];
+  label?: string;
+}
+
 export interface GameEvents {
   'petal:collected': { type: PetalType; count: number };
   'petal:spawned': { type: PetalType; x: number; y: number };
@@ -365,4 +395,9 @@ export interface GameEvents {
   'synthesis:panel_opened': {};
   'synthesis:button_clicked': {};
   'inheritance:apply': { data: InheritanceData };
+  'save:backup_created': { label?: string; isAuto: boolean };
+  'save:backup_restored': { label?: string };
+  'save:validation_warning': { result: SaveValidationResult };
+  'save:migration_completed': { result: MigrationResult };
+  'save:error': { message: string };
 }

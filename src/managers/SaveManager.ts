@@ -17,7 +17,11 @@ import {
   InheritanceType,
   InheritanceOption,
   InheritanceData,
-  ReviewData
+  ReviewData,
+  SaveValidationResult,
+  SaveBackupInfo,
+  MigrationResult,
+  SaveBackupData
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -39,15 +43,26 @@ import {
   MAX_INHERITANCE_POINTS,
   PETAL_RESERVE_RATIO,
   EFFICIENCY_BOOST_RATIO,
-  COLLECT_RANGE_GROWTH
+  COLLECT_RANGE_GROWTH,
+  BACKUP_STORAGE_KEY,
+  AUTO_BACKUP_KEY,
+  MAX_BACKUP_COUNT,
+  MAX_AUTO_BACKUP_COUNT,
+  AUTO_BACKUP_INTERVAL
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
+
+type MigrationFn = (saveData: any) => { data: any; warnings: string[] };
 
 export class SaveManager {
   private static instance: SaveManager;
   private currentSave: SaveData | null = null;
+  private migrationMap: Map<string, MigrationFn> = new Map();
+  private lastAutoBackupTime: number = 0;
 
-  private constructor() {}
+  private constructor() {
+    this.initMigrationMap();
+  }
 
   public static getInstance(): SaveManager {
     if (!SaveManager.instance) {
@@ -65,42 +80,108 @@ export class SaveManager {
     }
   }
 
+  private initMigrationMap(): void {
+    this.migrationMap.set('1.0.0', this.migrateFrom1_0_0.bind(this));
+    this.migrationMap.set('2.0.0', this.migrateFrom2_0_0.bind(this));
+    this.migrationMap.set('3.0.0', this.migrateFrom3_0_0.bind(this));
+    this.migrationMap.set('4.0.0', this.migrateFrom4_0_0.bind(this));
+  }
+
+  private getVersionOrder(): string[] {
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0'];
+  }
+
+  private compareVersions(v1: string, v2: string): number {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+      const p1 = parts1[i] || 0;
+      const p2 = parts2[i] || 0;
+      if (p1 < p2) return -1;
+      if (p1 > p2) return 1;
+    }
+    return 0;
+  }
+
   private migrateSaveData(saveData: any): SaveData {
+    const fromVersion = saveData.version || '1.0.0';
+    const warnings: string[] = [];
+    let currentData = JSON.parse(JSON.stringify(saveData));
+
+    if (this.compareVersions(fromVersion, SAVE_VERSION) >= 0) {
+      return saveData as SaveData;
+    }
+
+    const versionOrder = this.getVersionOrder();
+    const startIndex = versionOrder.indexOf(fromVersion);
+    const endIndex = versionOrder.indexOf(SAVE_VERSION);
+
+    if (startIndex === -1) {
+      currentData = this.fallbackMigration(currentData);
+      warnings.push(`未知版本 ${fromVersion}，使用兜底迁移`);
+    } else {
+      for (let i = startIndex; i < endIndex && i < versionOrder.length - 1; i++) {
+        const currentVersion = versionOrder[i];
+        const migrationFn = this.migrationMap.get(currentVersion);
+        if (migrationFn) {
+          try {
+            const result = migrationFn(currentData);
+            currentData = result.data;
+            warnings.push(...result.warnings);
+          } catch (e) {
+            warnings.push(`从 ${currentVersion} 迁移时出错: ${e}`);
+            currentData = this.fallbackMigration(currentData);
+            break;
+          }
+        }
+      }
+    }
+
+    currentData.version = SAVE_VERSION;
+    const finalData = this.fillDefaultFields(currentData);
+
+    const result: MigrationResult = {
+      success: true,
+      fromVersion,
+      toVersion: SAVE_VERSION,
+      warnings
+    };
+    EventManager.getInstance().emit('save:migration_completed', { result });
+
+    return finalData as SaveData;
+  }
+
+  private fallbackMigration(saveData: any): any {
     const initialState = getInitialGameState();
-    
-    if (!saveData.version || saveData.version === '1.0.0' || saveData.version === '2.0.0') {
-      const oldState = saveData.gameState || {};
-      
-      const migratedPetals: Record<PetalType, number> = { ...initialState.petals };
-      if (oldState.petals) {
-        Object.keys(oldState.petals).forEach((key) => {
-          if (key in migratedPetals) {
-            migratedPetals[key as PetalType] = oldState.petals[key];
-          }
-        });
-      }
-
-      const migratedUnlocked: PetalType[] = [...initialState.unlockedPetals];
-      if (oldState.unlockedPetals) {
-        oldState.unlockedPetals.forEach((type: PetalType) => {
-          if (!migratedUnlocked.includes(type)) {
-            migratedUnlocked.push(type);
-          }
-        });
-      }
-
-      const unlockedRecipes = this.computeUnlockedRecipes(migratedPetals);
-
-      const migratedGoals = this.migrateGoals(oldState.goals, migratedPetals);
-
-      saveData.gameState = {
+    const oldState = saveData.gameState || {};
+    const migratedPetals: Record<string, number> = { ...initialState.petals };
+    if (oldState.petals) {
+      Object.keys(oldState.petals).forEach((key) => {
+        if (key in migratedPetals) {
+          migratedPetals[key] = oldState.petals[key];
+        }
+      });
+    }
+    const migratedUnlocked: PetalType[] = [...initialState.unlockedPetals];
+    if (oldState.unlockedPetals) {
+      oldState.unlockedPetals.forEach((type: PetalType) => {
+        if (!migratedUnlocked.includes(type)) {
+          migratedUnlocked.push(type);
+        }
+      });
+    }
+    const unlockedRecipes = oldState.unlockedRecipes || this.computeUnlockedRecipes(migratedPetals as Record<PetalType, number>);
+    const migratedGoals = this.migrateGoals(oldState.goals, migratedPetals as Record<PetalType, number>);
+    return {
+      ...saveData,
+      gameState: {
         ...initialState,
         ...oldState,
         petals: migratedPetals,
         unlockedPetals: migratedUnlocked,
         totalMutations: oldState.totalMutations || 0,
         totalFailures: oldState.totalFailures || 0,
-        unlockedRecipes: oldState.unlockedRecipes || unlockedRecipes,
+        unlockedRecipes,
         discoveredMutations: oldState.discoveredMutations || [],
         discoveredFailures: oldState.discoveredFailures || [],
         resourceTrend: oldState.resourceTrend || [],
@@ -108,15 +189,54 @@ export class SaveManager {
         goals: migratedGoals,
         activeStatusMessages: oldState.activeStatusMessages || [],
         lastSaveTime: oldState.lastSaveTime || 0
-      };
-      saveData.version = SAVE_VERSION;
-    }
+      }
+    };
+  }
 
-    if (saveData.version !== SAVE_VERSION) {
-      saveData.version = SAVE_VERSION;
+  private fillDefaultFields(saveData: any): any {
+    const initialState = getInitialGameState();
+    const initialSettings = getInitialSettings();
+    const oldState = saveData.gameState || {};
+    const oldSettings = saveData.settings || {};
+    saveData.gameState = { ...initialState, ...oldState };
+    saveData.settings = { ...initialSettings, ...oldSettings };
+    if (!saveData.timestamp) {
+      saveData.timestamp = Date.now();
     }
+    return saveData;
+  }
 
-    return saveData as SaveData;
+  private migrateFrom1_0_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    const result = this.fallbackMigration(saveData);
+    warnings.push('从 1.0.0 版本迁移，已应用默认字段填充');
+    return { data: result, warnings };
+  }
+
+  private migrateFrom2_0_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    const result = this.fallbackMigration(saveData);
+    warnings.push('从 2.0.0 版本迁移，已应用默认字段填充');
+    return { data: result, warnings };
+  }
+
+  private migrateFrom3_0_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    const result = this.fallbackMigration(saveData);
+    warnings.push('从 3.0.0 版本迁移，已应用默认字段填充');
+    return { data: result, warnings };
+  }
+
+  private migrateFrom4_0_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    const initialState = getInitialGameState();
+    if (saveData.gameState) {
+      if (saveData.gameState.efficiencyBoost === undefined) {
+        saveData.gameState.efficiencyBoost = initialState.efficiencyBoost || 0;
+        warnings.push('新增字段 efficiencyBoost 已设为默认值');
+      }
+    }
+    return { data: saveData, warnings };
   }
 
   private migrateGoals(oldGoals: Goal[] | undefined, petals: Record<PetalType, number>): Goal[] {
@@ -149,17 +269,10 @@ export class SaveManager {
   }
 
   public loadSave(): SaveData | null {
-    try {
-      const data = localStorage.getItem(SAVE_KEY);
-      if (data) {
-        const parsed = JSON.parse(data);
-        const migrated = this.migrateSaveData(parsed);
-        this.currentSave = migrated;
-        this.saveGame(migrated.gameState);
-        return this.currentSave;
-      }
-    } catch (error) {
-      console.error('Failed to load save:', error);
+    const recovered = this.loadSaveWithRecovery();
+    if (recovered) {
+      this.saveGame(recovered.gameState);
+      return recovered;
     }
     return null;
   }
@@ -200,8 +313,11 @@ export class SaveManager {
       this.currentSave = saveData;
       gameState.lastSaveTime = Date.now();
       EventManager.getInstance().emit('save:update', { state: gameState });
+
+      this.checkAutoBackup();
     } catch (error) {
       console.error('Failed to save game:', error);
+      EventManager.getInstance().emit('save:error', { message: '游戏存档失败' });
     }
   }
 
@@ -984,5 +1100,482 @@ export class SaveManager {
       inheritanceOptions: this.getInheritanceOptions(),
       totalScore: this.calculateTotalScore()
     };
+  }
+
+  // ========== 数据校验 ==========
+
+  public validateSave(saveData?: SaveData): SaveValidationResult {
+    const data = saveData || this.currentSave;
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    let fixed = false;
+
+    if (!data) {
+      return { valid: false, errors: ['无存档数据'], warnings: [], fixed: false };
+    }
+
+    if (!data.version) {
+      errors.push('存档缺少版本号');
+    }
+
+    if (!data.gameState) {
+      errors.push('存档缺少游戏状态');
+      return { valid: false, errors, warnings, fixed: false };
+    }
+
+    const state = data.gameState;
+
+    if (typeof state.totalCollected !== 'number' || state.totalCollected < 0) {
+      errors.push('totalCollected 数据无效');
+    }
+
+    if (typeof state.totalSynthesized !== 'number' || state.totalSynthesized < 0) {
+      errors.push('totalSynthesized 数据无效');
+    }
+
+    if (typeof state.playTime !== 'number' || state.playTime < 0) {
+      warnings.push('playTime 数据异常');
+    }
+
+    if (!state.petals || typeof state.petals !== 'object') {
+      errors.push('petals 数据缺失');
+    } else {
+      const petalTypes = Object.values(PetalType);
+      let petalSum = 0;
+      for (const type of petalTypes) {
+        const count = state.petals[type];
+        if (typeof count !== 'number' || count < 0) {
+          warnings.push(`花瓣 ${type} 数量异常，已重置为0`);
+          state.petals[type] = 0;
+          fixed = true;
+        }
+        petalSum += state.petals[type] || 0;
+      }
+
+      if (state.totalCollected > 0 && petalSum > state.totalCollected * 10) {
+        warnings.push('花瓣总数与收集数比例异常');
+      }
+    }
+
+    if (!state.unlockedPetals || !Array.isArray(state.unlockedPetals)) {
+      warnings.push('unlockedPetals 数据异常，已重置');
+      state.unlockedPetals = [PetalType.MOONLIGHT];
+      fixed = true;
+    }
+
+    if (!state.unlockedRecipes || !Array.isArray(state.unlockedRecipes)) {
+      warnings.push('unlockedRecipes 数据异常，已重置');
+      state.unlockedRecipes = ['recipe_1', 'recipe_7'];
+      fixed = true;
+    }
+
+    if (!state.goals || !Array.isArray(state.goals) || state.goals.length === 0) {
+      warnings.push('goals 数据异常，已重置为默认目标');
+      state.goals = JSON.parse(JSON.stringify(INITIAL_GOALS));
+      fixed = true;
+    }
+
+    if (state.totalMutations > state.totalSynthesized) {
+      warnings.push('变异次数超过成功合成次数');
+    }
+
+    if (state.totalFailures > state.totalSynthesized + state.totalMutations) {
+      warnings.push('失败次数异常');
+    }
+
+    if (state.isCompleted && !state.hasWakeUp) {
+      warnings.push('游戏已通关但未获得唤醒之花');
+    }
+
+    if (state.resourceTrend && state.resourceTrend.length > MAX_RESOURCE_TREND_POINTS) {
+      warnings.push(`资源趋势数据超过上限，已裁剪`);
+      state.resourceTrend = state.resourceTrend.slice(-MAX_RESOURCE_TREND_POINTS);
+      fixed = true;
+    }
+
+    if (state.synthesisRecords && state.synthesisRecords.length > MAX_SYNTHESIS_RECORDS) {
+      warnings.push(`合成记录超过上限，已裁剪`);
+      state.synthesisRecords = state.synthesisRecords.slice(0, MAX_SYNTHESIS_RECORDS);
+      fixed = true;
+    }
+
+    if (state.activeStatusMessages && state.activeStatusMessages.length > MAX_STATUS_MESSAGES) {
+      warnings.push(`状态消息超过上限，已裁剪`);
+      state.activeStatusMessages = state.activeStatusMessages.slice(-MAX_STATUS_MESSAGES);
+      fixed = true;
+    }
+
+    const valid = errors.length === 0;
+
+    if (warnings.length > 0 || errors.length > 0) {
+      EventManager.getInstance().emit('save:validation_warning', {
+        result: { valid, errors, warnings, fixed }
+      });
+    }
+
+    return { valid, errors, warnings, fixed };
+  }
+
+  public validateAndRepairSave(): SaveValidationResult {
+    const result = this.validateSave();
+    if (result.fixed && this.currentSave) {
+      this.saveGame(this.currentSave.gameState);
+    }
+    return result;
+  }
+
+  // ========== 备份系统 ==========
+
+  private getBackups(): SaveBackupData[] {
+    try {
+      const data = localStorage.getItem(BACKUP_STORAGE_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.error('Failed to load backups:', e);
+    }
+    return [];
+  }
+
+  private saveBackups(backups: SaveBackupData[]): void {
+    try {
+      localStorage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(backups));
+    } catch (e) {
+      console.error('Failed to save backups:', e);
+      EventManager.getInstance().emit('save:error', { message: '保存备份失败：存储空间不足' });
+    }
+  }
+
+  public createBackup(label?: string): SaveBackupInfo | null {
+    try {
+      const currentData = this.currentSave;
+      if (!currentData) {
+        return null;
+      }
+
+      const backup: SaveBackupData = {
+        version: currentData.version,
+        timestamp: Date.now(),
+        gameState: JSON.parse(JSON.stringify(currentData.gameState)),
+        settings: { ...currentData.settings },
+        label
+      };
+
+      const backups = this.getBackups();
+      backups.unshift(backup);
+
+      if (backups.length > MAX_BACKUP_COUNT) {
+        backups.length = MAX_BACKUP_COUNT;
+      }
+
+      this.saveBackups(backups);
+
+      EventManager.getInstance().emit('save:backup_created', { label, isAuto: false });
+
+      return {
+        version: backup.version,
+        timestamp: backup.timestamp,
+        label: backup.label,
+        size: JSON.stringify(backup).length,
+        isAuto: false
+      };
+    } catch (e) {
+      console.error('Failed to create backup:', e);
+      EventManager.getInstance().emit('save:error', { message: '创建备份失败' });
+      return null;
+    }
+  }
+
+  public createAutoBackup(): void {
+    try {
+      const currentData = this.currentSave;
+      if (!currentData) return;
+
+      const backup: SaveBackupData = {
+        version: currentData.version,
+        timestamp: Date.now(),
+        gameState: JSON.parse(JSON.stringify(currentData.gameState)),
+        settings: { ...currentData.settings },
+        isAuto: true
+      } as SaveBackupData & { isAuto: boolean };
+
+      let autoBackups: SaveBackupData[] = [];
+      try {
+        const data = localStorage.getItem(AUTO_BACKUP_KEY);
+        if (data) {
+          autoBackups = JSON.parse(data);
+        }
+      } catch (e) {
+        console.error('Failed to load auto backups:', e);
+      }
+
+      autoBackups.unshift(backup);
+      if (autoBackups.length > MAX_AUTO_BACKUP_COUNT) {
+        autoBackups.length = MAX_AUTO_BACKUP_COUNT;
+      }
+
+      localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(autoBackups));
+      this.lastAutoBackupTime = Date.now();
+
+      EventManager.getInstance().emit('save:backup_created', { label: '自动备份', isAuto: true });
+    } catch (e) {
+      console.error('Failed to create auto backup:', e);
+    }
+  }
+
+  public getBackupList(): SaveBackupInfo[] {
+    const backups = this.getBackups();
+    const autoBackups = this.getAutoBackups();
+    const allBackups = [...autoBackups.map(b => ({ ...b, isAuto: true })), ...backups.map(b => ({ ...b, isAuto: false }))];
+    
+    return allBackups
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .map(b => ({
+        version: b.version,
+        timestamp: b.timestamp,
+        label: b.label,
+        size: JSON.stringify(b).length,
+        isAuto: (b as any).isAuto || false
+      }));
+  }
+
+  private getAutoBackups(): SaveBackupData[] {
+    try {
+      const data = localStorage.getItem(AUTO_BACKUP_KEY);
+      if (data) {
+        return JSON.parse(data);
+      }
+    } catch (e) {
+      console.error('Failed to load auto backups:', e);
+    }
+    return [];
+  }
+
+  public restoreBackup(index: number, isAuto: boolean = false): boolean {
+    try {
+      let backups: SaveBackupData[];
+      if (isAuto) {
+        backups = this.getAutoBackups();
+      } else {
+        backups = this.getBackups();
+      }
+
+      if (index < 0 || index >= backups.length) {
+        return false;
+      }
+
+      const backup = backups[index];
+      const migrated = this.migrateSaveData(backup);
+      const validation = this.validateSave(migrated);
+
+      if (!validation.valid) {
+        EventManager.getInstance().emit('save:error', { message: '备份数据校验失败，无法恢复' });
+        return false;
+      }
+
+      this.createBackup('恢复前备份');
+
+      this.currentSave = migrated;
+      this.saveGame(migrated.gameState);
+
+      EventManager.getInstance().emit('save:backup_restored', { label: backup.label });
+
+      return true;
+    } catch (e) {
+      console.error('Failed to restore backup:', e);
+      EventManager.getInstance().emit('save:error', { message: '恢复备份失败' });
+      return false;
+    }
+  }
+
+  public deleteBackup(index: number, isAuto: boolean = false): boolean {
+    try {
+      if (isAuto) {
+        const autoBackups = this.getAutoBackups();
+        if (index >= 0 && index < autoBackups.length) {
+          autoBackups.splice(index, 1);
+          localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(autoBackups));
+          return true;
+        }
+      } else {
+        const backups = this.getBackups();
+        if (index >= 0 && index < backups.length) {
+          backups.splice(index, 1);
+          this.saveBackups(backups);
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      console.error('Failed to delete backup:', e);
+      return false;
+    }
+  }
+
+  public clearAllBackups(): void {
+    try {
+      localStorage.removeItem(BACKUP_STORAGE_KEY);
+      localStorage.removeItem(AUTO_BACKUP_KEY);
+    } catch (e) {
+      console.error('Failed to clear backups:', e);
+    }
+  }
+
+  // ========== 导入/导出 ==========
+
+  public exportSave(): string | null {
+    try {
+      const saveData = this.currentSave;
+      if (!saveData) return null;
+      return btoa(encodeURIComponent(JSON.stringify(saveData)));
+    } catch (e) {
+      console.error('Failed to export save:', e);
+      EventManager.getInstance().emit('save:error', { message: '导出存档失败' });
+      return null;
+    }
+  }
+
+  public importSave(encodedData: string): boolean {
+    try {
+      const decoded = decodeURIComponent(atob(encodedData));
+      const parsed = JSON.parse(decoded);
+
+      if (!parsed.gameState || !parsed.version) {
+        EventManager.getInstance().emit('save:error', { message: '导入数据格式无效' });
+        return false;
+      }
+
+      const migrated = this.migrateSaveData(parsed);
+      const validation = this.validateSave(migrated);
+
+      if (!validation.valid) {
+        EventManager.getInstance().emit('save:error', { message: '导入数据校验失败' });
+        return false;
+      }
+
+      this.createBackup('导入前备份');
+
+      this.currentSave = migrated;
+      this.saveGame(migrated.gameState);
+
+      EventManager.getInstance().emit('save:backup_restored', { label: '导入存档' });
+
+      return true;
+    } catch (e) {
+      console.error('Failed to import save:', e);
+      EventManager.getInstance().emit('save:error', { message: '导入存档失败：数据格式错误' });
+      return false;
+    }
+  }
+
+  // ========== 异常恢复 ==========
+
+  public tryRecoverFromError(): SaveData | null {
+    const autoBackups = this.getAutoBackups();
+    if (autoBackups.length > 0) {
+      const latest = autoBackups[0];
+      try {
+        const migrated = this.migrateSaveData(latest);
+        const validation = this.validateSave(migrated);
+        if (validation.valid) {
+          this.currentSave = migrated;
+          this.saveGame(migrated.gameState);
+          EventManager.getInstance().emit('save:backup_restored', { label: '自动恢复' });
+          return migrated;
+        }
+      } catch (e) {
+        console.error('Auto backup recovery failed:', e);
+      }
+    }
+
+    const manualBackups = this.getBackups();
+    for (const backup of manualBackups) {
+      try {
+        const migrated = this.migrateSaveData(backup);
+        const validation = this.validateSave(migrated);
+        if (validation.valid) {
+          this.currentSave = migrated;
+          this.saveGame(migrated.gameState);
+          EventManager.getInstance().emit('save:backup_restored', { label: backup.label || '备份恢复' });
+          return migrated;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  public loadSaveWithRecovery(): SaveData | null {
+    try {
+      const data = localStorage.getItem(SAVE_KEY);
+      if (data) {
+        const parsed = JSON.parse(data);
+        const migrated = this.migrateSaveData(parsed);
+        const validation = this.validateSave(migrated);
+
+        if (validation.valid) {
+          this.currentSave = migrated;
+          if (validation.fixed) {
+            this.saveGame(migrated.gameState);
+          }
+          return this.currentSave;
+        }
+
+        if (validation.errors.length > 0) {
+          console.warn('Save validation errors, attempting recovery:', validation.errors);
+          const recovered = this.tryRecoverFromError();
+          if (recovered) {
+            return recovered;
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load save, attempting recovery:', error);
+      const recovered = this.tryRecoverFromError();
+      if (recovered) {
+        return recovered;
+      }
+    }
+    return null;
+  }
+
+  // ========== 设置回滚 ==========
+
+  public resetSettings(): void {
+    const gameState = this.getGameState();
+    const defaultSettings = getInitialSettings();
+    
+    const saveData: SaveData = {
+      version: SAVE_VERSION,
+      timestamp: Date.now(),
+      gameState: { ...gameState },
+      settings: defaultSettings
+    };
+
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+      if (this.currentSave) {
+        this.currentSave.settings = defaultSettings;
+      }
+      EventManager.getInstance().emit('settings:updated', { settings: defaultSettings });
+    } catch (error) {
+      console.error('Failed to reset settings:', error);
+    }
+  }
+
+  // ========== 自动备份触发 ==========
+
+  public checkAutoBackup(): void {
+    const now = Date.now();
+    if (now - this.lastAutoBackupTime >= AUTO_BACKUP_INTERVAL) {
+      this.createAutoBackup();
+    }
+  }
+
+  public getLastAutoBackupTime(): number {
+    return this.lastAutoBackupTime;
   }
 }

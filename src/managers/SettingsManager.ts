@@ -11,6 +11,8 @@ export class SettingsManager {
   private static instance: SettingsManager;
   private controlSettings: ControlSettings;
   private tutorialState: TutorialState;
+  private settingsHistory: ControlSettings[] = [];
+  private maxHistorySize: number = 10;
 
   private constructor() {
     this.controlSettings = this.loadControlSettings();
@@ -55,7 +57,45 @@ export class SettingsManager {
   }
 
   public updateControlSettings(settings: Partial<ControlSettings>): void {
+    const previousSettings = { ...this.controlSettings };
+    this.settingsHistory.push(previousSettings);
+    if (this.settingsHistory.length > this.maxHistorySize) {
+      this.settingsHistory.shift();
+    }
+
     this.controlSettings = { ...this.controlSettings, ...settings };
+    this.saveControlSettings();
+    EventManager.getInstance().emit('settings:updated', { 
+      settings: { ...this.controlSettings } 
+    });
+  }
+
+  public canUndoSettings(): boolean {
+    return this.settingsHistory.length > 0;
+  }
+
+  public undoSettings(): boolean {
+    if (this.settingsHistory.length === 0) {
+      return false;
+    }
+
+    const previousSettings = this.settingsHistory.pop()!;
+    this.controlSettings = previousSettings;
+    this.saveControlSettings();
+    EventManager.getInstance().emit('settings:updated', { 
+      settings: { ...this.controlSettings } 
+    });
+    return true;
+  }
+
+  public resetToDefault(): void {
+    const previousSettings = { ...this.controlSettings };
+    this.settingsHistory.push(previousSettings);
+    if (this.settingsHistory.length > this.maxHistorySize) {
+      this.settingsHistory.shift();
+    }
+
+    this.controlSettings = getInitialControlSettings();
     this.saveControlSettings();
     EventManager.getInstance().emit('settings:updated', { 
       settings: { ...this.controlSettings } 
