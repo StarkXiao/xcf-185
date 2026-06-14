@@ -43,6 +43,7 @@ export class GameScene extends Phaser.Scene {
 
     this.petalSystem = new PetalSystem(this);
     this.petalSystem.create();
+    this.petalSystem.setPlayer(this.playerController.getPlayer());
 
     this.synthesisSystem = new SynthesisSystem(this);
 

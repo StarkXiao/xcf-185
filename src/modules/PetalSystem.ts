@@ -19,6 +19,8 @@ export class PetalSystem {
   private collectParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private autoCollectEnabled: boolean = true;
   private eventListeners: Array<{ event: string; callback: (data: any) => void }> = [];
+  private player: Phaser.Physics.Arcade.Sprite | null = null;
+  private manualCollectRange: number = 150;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -26,6 +28,10 @@ export class PetalSystem {
 
   public setAutoCollectEnabled(enabled: boolean): void {
     this.autoCollectEnabled = enabled;
+  }
+
+  public setPlayer(player: Phaser.Physics.Arcade.Sprite | null): void {
+    this.player = player;
   }
 
   public create(): void {
@@ -38,6 +44,58 @@ export class PetalSystem {
     this.createCollectParticles();
     this.spawnInitialPetals();
     this.setupSettingsListener();
+    this.setupManualCollectInput();
+  }
+
+  private setupManualCollectInput(): void {
+    this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.autoCollectEnabled || !this.player) return;
+
+      for (let i = this.petalPool.length - 1; i >= 0; i--) {
+        const petal = this.petalPool[i];
+        if (!petal.active || petal.isCollecting) continue;
+
+        const clickDist = Phaser.Math.Distance.Between(
+          petal.x, petal.y, pointer.worldX, pointer.worldY);
+        const clickRadius = Math.max(petal.displayWidth, petal.displayHeight) * 0.8;
+
+        if (clickDist < clickRadius) {
+          const playerDist = Phaser.Math.Distance.Between(
+            petal.x, petal.y, this.player.x, this.player.y);
+
+          if (playerDist < this.manualCollectRange) {
+            this.collectPetal(petal, this.player);
+          } else {
+            this.showManualCollectHint(petal.x, petal.y);
+          }
+          break;
+        }
+      }
+    });
+  }
+
+  private showManualCollectHint(x: number, y: number): void {
+    const hint = this.scene.add.text(x, y - 40, '距离太远', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#ff6b6b',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+
+    const screenX = this.scene.cameras.main.worldView.x + x;
+    const screenY = this.scene.cameras.main.worldView.y + y;
+    hint.x = screenX;
+    hint.y = screenY - 40;
+
+    this.scene.tweens.add({
+      targets: hint,
+      y: screenY - 70,
+      alpha: 0,
+      duration: 800,
+      ease: 'Cubic.Out',
+      onComplete: () => hint.destroy()
+    });
   }
 
   private setupSettingsListener(): void {
@@ -183,6 +241,9 @@ export class PetalSystem {
   }
 
   public update(time: number, delta: number, player: Phaser.Physics.Arcade.Sprite | null, collectRange: number = 80, attractRange: number = 150): void {
+    if (player !== this.player) {
+      this.player = player;
+    }
     this.spawnTimer += delta;
     if (this.spawnTimer >= PETAL_SPAWN_INTERVAL && this.petalGroup && this.petalGroup.getLength() < MAX_PETALS_ON_SCREEN) {
       this.spawnPetal();
@@ -213,7 +274,7 @@ export class PetalSystem {
       if (player) {
         const distance = Phaser.Math.Distance.Between(petal.x, petal.y, player.x, player.y);
 
-        if (distance < collectRange) {
+        if (this.autoCollectEnabled && distance < collectRange) {
           this.collectPetal(petal, player);
         } else if (this.autoCollectEnabled && distance < attractRange) {
           const angle = Phaser.Math.Angle.Between(petal.x, petal.y, player.x, player.y);

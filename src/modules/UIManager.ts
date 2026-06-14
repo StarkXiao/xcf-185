@@ -2298,7 +2298,7 @@ export class UIManager {
       {
         key: 'autoCollectEnabled' as keyof ControlSettings,
         label: '自动采集',
-        description: '靠近花瓣自动吸附收集',
+        description: '开启后靠近花瓣自动吸附并收集，关闭后需手动点击花瓣收集',
         type: 'toggle' as const
       },
       {
