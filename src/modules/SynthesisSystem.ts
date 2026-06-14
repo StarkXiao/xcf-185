@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { PetalType, SynthesisRecipe, SynthesisResultType, SynthesisResultData, MutationOutcome, FailOutcome } from '../types';
+import { PetalType, SynthesisRecipe, SynthesisResultType, SynthesisResultData, MutationOutcome, FailOutcome, AudioContextType } from '../types';
 import { SYNTHESIS_RECIPES, PETAL_CONFIGS } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
+import { AudioManager } from '../managers/AudioManager';
 
 export class SynthesisSystem {
   private scene: Phaser.Scene;
@@ -618,6 +619,8 @@ export class SynthesisSystem {
   private triggerWakeUpSequence(): void {
     const state = SaveManager.getInstance().getGameState();
     
+    AudioManager.getInstance().switchContext(AudioContextType.COMPLETE);
+
     EventManager.getInstance().emit('game:complete', {
       playTime: state.playTime,
       totalCollected: state.totalCollected

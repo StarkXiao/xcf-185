@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { PetalType, InheritanceOption, InheritanceType, ReviewData } from '../types';
+import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType } from '../types';
 
 export class ResultScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -22,6 +22,7 @@ export class ResultScene extends Phaser.Scene {
 
   create(): void {
     AudioManager.getInstance().setScene(this);
+    AudioManager.getInstance().switchContext(AudioContextType.COMPLETE);
     AudioManager.getInstance().playSfx('sfx_wakeup', 0.8);
 
     this.reviewData = SaveManager.getInstance().getReviewData();

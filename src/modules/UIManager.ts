@@ -13,7 +13,8 @@ import {
   StatusMessage,
   StatusType,
   QuickEntryType,
-  ControlSettings
+  ControlSettings,
+  AudioContextType
 } from '../types';
 import { 
   PETAL_CONFIGS, 
@@ -712,8 +713,7 @@ export class UIManager {
     const onRecipeUnlock = ({ recipeId }: GameEvents['synthesis:recipe_unlocked']) => {
       this.showToast(`📖 解锁新配方！`, 3000, 0xffdd33);
       if (this.synthesisPanel) {
-        this.closeSynthesisPanel();
-        this.openSynthesisPanel();
+        this.refreshSynthesisPanel();
       }
     };
     EventManager.getInstance().on('synthesis:recipe_unlocked', onRecipeUnlock);
@@ -801,6 +801,7 @@ export class UIManager {
   private openSynthesisPanel(): void {
     if (!this.container) return;
 
+    AudioManager.getInstance().switchContext(AudioContextType.SYNTHESIS);
     EventManager.getInstance().emit('synthesis:panel_opened', {});
 
     this.synthesisPanel = this.scene.add.container(0, 0).setDepth(150).setScrollFactor(0);
@@ -964,6 +965,8 @@ export class UIManager {
   private closeSynthesisPanel(): void {
     if (!this.synthesisPanel || !this.container) return;
 
+    AudioManager.getInstance().switchContext(AudioContextType.EXPLORE);
+
     this.scene.tweens.add({
       targets: this.synthesisPanel,
       alpha: 0,
@@ -976,6 +979,15 @@ export class UIManager {
         }
       }
     });
+  }
+
+  private refreshSynthesisPanel(): void {
+    if (!this.synthesisPanel || !this.container) return;
+
+    this.synthesisPanel.destroy();
+    this.synthesisPanel = null;
+
+    this.openSynthesisPanel();
   }
 
   private toggleCollectionPanel(): void {

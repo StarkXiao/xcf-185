@@ -97,6 +97,9 @@ export class PreloaderScene extends Phaser.Scene {
   private loadAssets(): void {
     this.load.audio('bgm_main', this.createSilentAudio());
     this.load.audio('bgm_menu', this.createSilentAudio());
+    this.load.audio('bgm_explore', this.createSilentAudio());
+    this.load.audio('bgm_synthesis', this.createSilentAudio());
+    this.load.audio('bgm_complete', this.createSilentAudio());
     this.load.audio('sfx_collect', this.createSilentAudio());
     this.load.audio('sfx_click', this.createSilentAudio());
     this.load.audio('sfx_synthesis_start', this.createSilentAudio());

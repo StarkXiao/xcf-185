@@ -16,6 +16,13 @@ export enum PetalType {
   FAILED_ASH = 'failed_ash'
 }
 
+export enum AudioContextType {
+  MENU = 'menu',
+  EXPLORE = 'explore',
+  SYNTHESIS = 'synthesis',
+  COMPLETE = 'complete'
+}
+
 export enum GameStateKey {
   MENU = 'Menu',
   PRELOADER = 'Preloader',
@@ -173,6 +180,11 @@ export interface GameState {
   efficiencyBoost?: number;
 }
 
+export interface AudioContextPreferences {
+  volume: number;
+  enabled: boolean;
+}
+
 export interface SaveData {
   version: string;
   timestamp: number;
@@ -181,6 +193,7 @@ export interface SaveData {
     bgmVolume: number;
     sfxVolume: number;
     isMuted: boolean;
+    audioContextPreferences: Partial<Record<AudioContextType, AudioContextPreferences>>;
   };
 }
 
@@ -210,6 +223,8 @@ export interface GameEvents {
   'collection:unlock': { type: PetalType; category: 'normal' | 'mutation' | 'failed' };
   'game:complete': { playTime: number; totalCollected: number };
   'audio:play': { key: string; volume?: number };
+  'audio:context_changed': { context: AudioContextType; previousContext: AudioContextType | null };
+  'audio:context_preference_updated': { context: AudioContextType; preferences: AudioContextPreferences };
   'save:update': { state: GameState };
   'trend:updated': { point: ResourceTrendPoint };
   'goal:progress': { goalId: string; current: number; target: number };
@@ -377,6 +392,8 @@ export interface GameEvents {
   'collection:unlock': { type: PetalType; category: 'normal' | 'mutation' | 'failed' };
   'game:complete': { playTime: number; totalCollected: number };
   'audio:play': { key: string; volume?: number };
+  'audio:context_changed': { context: AudioContextType; previousContext: AudioContextType | null };
+  'audio:context_preference_updated': { context: AudioContextType; preferences: AudioContextPreferences };
   'save:update': { state: GameState };
   'trend:updated': { point: ResourceTrendPoint };
   'goal:progress': { goalId: string; current: number; target: number };

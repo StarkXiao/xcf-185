@@ -7,6 +7,7 @@ import { SynthesisSystem } from '../modules/SynthesisSystem';
 import { UIManager } from '../modules/UIManager';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
+import { AudioContextType } from '../types';
 
 export class GameScene extends Phaser.Scene {
   private sceneRenderer!: SceneRenderer;
@@ -34,7 +35,7 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     AudioManager.getInstance().setScene(this);
-    AudioManager.getInstance().playBgm('bgm_main');
+    AudioManager.getInstance().switchContext(AudioContextType.EXPLORE);
 
     this.physics.world.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 

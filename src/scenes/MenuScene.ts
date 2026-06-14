@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SAVE_VERSION } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { SaveBackupInfo, SaveValidationResult } from '../types';
+import { SaveBackupInfo, SaveValidationResult, AudioContextType } from '../types';
 
 export class MenuScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -16,7 +16,7 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     AudioManager.getInstance().setScene(this);
-    AudioManager.getInstance().playBgm('bgm_menu');
+    AudioManager.getInstance().switchContext(AudioContextType.MENU);
 
     this.createBackground();
     this.createTitle();

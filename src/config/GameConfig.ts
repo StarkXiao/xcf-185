@@ -10,7 +10,8 @@ import {
   QuickEntryType,
   InheritanceType,
   InheritanceOption,
-  KeyMilestone
+  KeyMilestone,
+  AudioContextType
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -697,7 +698,8 @@ export const AUTO_BACKUP_INTERVAL = 60000;
 export const INITIAL_SETTINGS = {
   bgmVolume: 0.5,
   sfxVolume: 0.7,
-  isMuted: false
+  isMuted: false,
+  audioContextPreferences: {} as Partial<Record<AudioContextType, { volume: number; enabled: boolean }>>
 };
 
 export function getInitialGameState() {
@@ -834,3 +836,32 @@ export const EFFICIENCY_RATING = {
 export const MAX_INHERITANCE_POINTS = 5;
 export const PETAL_RESERVE_RATIO = 0.1;
 export const EFFICIENCY_BOOST_RATIO = 0.2;
+
+export const AUDIO_CONTEXT_CONFIG: Record<AudioContextType, {
+  bgmKey: string;
+  defaultVolume: number;
+  crossFadeDuration: number;
+}> = {
+  [AudioContextType.MENU]: {
+    bgmKey: 'bgm_menu',
+    defaultVolume: 0.5,
+    crossFadeDuration: 800
+  },
+  [AudioContextType.EXPLORE]: {
+    bgmKey: 'bgm_explore',
+    defaultVolume: 0.5,
+    crossFadeDuration: 1000
+  },
+  [AudioContextType.SYNTHESIS]: {
+    bgmKey: 'bgm_synthesis',
+    defaultVolume: 0.6,
+    crossFadeDuration: 600
+  },
+  [AudioContextType.COMPLETE]: {
+    bgmKey: 'bgm_complete',
+    defaultVolume: 0.7,
+    crossFadeDuration: 1500
+  }
+};
+
+export const AUDIO_CONTEXT_PREFERENCE_KEY = 'dream_forest_audio_context_prefs';
