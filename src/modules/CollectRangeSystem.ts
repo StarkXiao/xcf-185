@@ -231,6 +231,18 @@ export class CollectRangeSystem {
     return this.currentProgress;
   }
 
+  public setVisible(visible: boolean): void {
+    if (this.rangeIndicator) {
+      this.rangeIndicator.setVisible(visible);
+    }
+    if (this.attractRangeIndicator) {
+      this.attractRangeIndicator.setVisible(visible);
+    }
+    if (this.progressRing) {
+      this.progressRing.setVisible(visible);
+    }
+  }
+
   public destroy(): void {
     if (this.rangeIndicator) {
       this.rangeIndicator.destroy();

@@ -73,6 +73,14 @@ export class TutorialSystem {
     EventManager.getInstance().on('goal:completed', onGoalComplete);
     this.uiListeners.push({ event: 'goal:completed', callback: onGoalComplete });
 
+    const onSynthesisButtonClicked = () => {
+      if (this.isActive && this.currentStep?.actionRequired === 'click' && this.currentStep?.highlightElement === 'synthesis_button') {
+        this.completeCurrentStep();
+      }
+    };
+    EventManager.getInstance().on('synthesis:button_clicked', onSynthesisButtonClicked);
+    this.uiListeners.push({ event: 'synthesis:button_clicked', callback: onSynthesisButtonClicked });
+
     const onTutorialNext = (data: { step: TutorialStep }) => {
       this.currentStep = data.step;
       this.showCurrentStep();

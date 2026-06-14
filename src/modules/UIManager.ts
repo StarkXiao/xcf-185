@@ -208,6 +208,7 @@ export class UIManager {
 
     button.on('pointerup', () => {
       btnBg.setScale(1);
+      EventManager.getInstance().emit('synthesis:button_clicked', {});
       this.toggleSynthesisPanel();
     });
 
@@ -799,6 +800,8 @@ export class UIManager {
 
   private openSynthesisPanel(): void {
     if (!this.container) return;
+
+    EventManager.getInstance().emit('synthesis:panel_opened', {});
 
     this.synthesisPanel = this.scene.add.container(0, 0).setDepth(150).setScrollFactor(0);
     

@@ -9,6 +9,7 @@ import {
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
+import { SettingsManager } from '../managers/SettingsManager';
 
 export class PetalSystem {
   private scene: Phaser.Scene;
@@ -16,9 +17,15 @@ export class PetalSystem {
   private petalPool: PetalObject[] = [];
   private spawnTimer: number = 0;
   private collectParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private autoCollectEnabled: boolean = true;
+  private eventListeners: Array<{ event: string; callback: (data: any) => void }> = [];
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+  }
+
+  public setAutoCollectEnabled(enabled: boolean): void {
+    this.autoCollectEnabled = enabled;
   }
 
   public create(): void {
@@ -30,6 +37,18 @@ export class PetalSystem {
 
     this.createCollectParticles();
     this.spawnInitialPetals();
+    this.setupSettingsListener();
+  }
+
+  private setupSettingsListener(): void {
+    const settings = SettingsManager.getInstance().getControlSettings();
+    this.autoCollectEnabled = settings.autoCollectEnabled;
+
+    const onSettingsUpdated = (data: { settings: any }) => {
+      this.autoCollectEnabled = data.settings.autoCollectEnabled;
+    };
+    EventManager.getInstance().on('settings:updated', onSettingsUpdated);
+    this.eventListeners.push({ event: 'settings:updated', callback: onSettingsUpdated });
   }
 
   private createPetalTextures(): void {
@@ -196,7 +215,7 @@ export class PetalSystem {
 
         if (distance < collectRange) {
           this.collectPetal(petal, player);
-        } else if (distance < attractRange) {
+        } else if (this.autoCollectEnabled && distance < attractRange) {
           const angle = Phaser.Math.Angle.Between(petal.x, petal.y, player.x, player.y);
           const speed = (1 - distance / attractRange) * 150;
           petal.x += Math.cos(angle) * speed * 0.016;
@@ -340,6 +359,11 @@ export class PetalSystem {
   }
 
   public destroy(): void {
+    this.eventListeners.forEach(({ event, callback }) => {
+      EventManager.getInstance().off(event as any, callback);
+    });
+    this.eventListeners = [];
+    
     if (this.collectParticles) {
       this.collectParticles.stop();
       this.collectParticles.destroy();

@@ -295,4 +295,6 @@ export interface GameEvents {
   'tutorial:complete': {};
   'tutorial:reset': {};
   'settings:updated': { settings: ControlSettings };
+  'synthesis:panel_opened': {};
+  'synthesis:button_clicked': {};
 }

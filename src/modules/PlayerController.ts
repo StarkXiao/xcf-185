@@ -3,7 +3,7 @@ import { PLAYER_SPEED, WORLD_WIDTH, WORLD_HEIGHT, PETAL_COLLECT_RANGE } from '..
 import { SaveManager } from '../managers/SaveManager';
 import { SettingsManager } from '../managers/SettingsManager';
 import { EventManager } from '../managers/EventManager';
-import { Position, Obstacle } from '../types';
+import { Position, Obstacle, ControlSettings } from '../types';
 import { PathfindingSystem } from './PathfindingSystem';
 import { ObstacleSystem } from './ObstacleSystem';
 import { CollectRangeSystem } from './CollectRangeSystem';
@@ -25,6 +25,8 @@ export class PlayerController {
   private joystickKnob: Phaser.Geom.Circle | null = null;
   private joystickActive = false;
   
+  private controlSettings: ControlSettings;
+  
   private pathfindingSystem: PathfindingSystem;
   private obstacleSystem: ObstacleSystem;
   private collectRangeSystem: CollectRangeSystem;
@@ -36,6 +38,7 @@ export class PlayerController {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    this.controlSettings = SettingsManager.getInstance().getControlSettings();
     this.pathfindingSystem = new PathfindingSystem();
     this.obstacleSystem = new ObstacleSystem(scene);
     this.collectRangeSystem = new CollectRangeSystem(scene);
@@ -63,6 +66,9 @@ export class PlayerController {
     this.setupPhysicsCollisions();
     this.createPathPreview();
     this.createTargetIndicator();
+    
+    this.applySettings();
+    this.setupSettingsListener();
   }
 
   private createPlayerSprite(x: number, y: number): void {
@@ -147,8 +153,6 @@ export class PlayerController {
   }
 
   private setupInput(): void {
-    const settings = SettingsManager.getInstance().getControlSettings();
-    
     this.cursors = this.scene.input.keyboard?.createCursorKeys() || null;
 
     const wasdKeys = this.scene.input.keyboard?.addKeys({
@@ -163,11 +167,17 @@ export class PlayerController {
     }
 
     this.scene.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (settings.joystickEnabled && pointer.y > (this.scene.game.config.height as number) * 0.7) {
+      if (this.controlSettings.joystickEnabled && pointer.y > (this.scene.game.config.height as number) * 0.7) {
         this.startJoystick(pointer);
-      } else {
+      } else if (this.controlSettings.autoPathEnabled) {
         this.currentPath = [];
         this.findPath(pointer.worldX, pointer.worldY);
+      } else {
+        this.currentPath = [];
+        this.moveTargetX = pointer.worldX;
+        this.moveTargetY = pointer.worldY;
+        this.isMoving = true;
+        this.tutorialSystem.notifyPlayerMoved();
       }
     });
 
@@ -324,6 +334,23 @@ export class PlayerController {
     this.targetIndicator.fill();
   }
 
+  private setupSettingsListener(): void {
+    EventManager.getInstance().on('settings:updated', (data) => {
+      this.controlSettings = { ...data.settings };
+      this.applySettings();
+    });
+  }
+
+  private applySettings(): void {
+    if (this.pathPreviewGraphics) {
+      this.pathPreviewGraphics.setVisible(this.controlSettings.showPathPreview);
+    }
+    if (this.targetIndicator) {
+      this.targetIndicator.setVisible(this.controlSettings.showPathPreview);
+    }
+    this.collectRangeSystem.setVisible(this.controlSettings.autoCollectEnabled);
+  }
+
   public update(time: number, delta: number): void {
     if (!this.player) return;
 
@@ -391,10 +418,9 @@ export class PlayerController {
       return;
     }
 
-    const settings = SettingsManager.getInstance().getControlSettings();
     let newPos = { x: this.player.x, y: this.player.y };
 
-    if (settings.autoPathEnabled) {
+    if (this.controlSettings.autoPathEnabled) {
       newPos = this.obstacleSystem.avoidObstacles(
         { x: this.player.x, y: this.player.y },
         target,
@@ -434,9 +460,7 @@ export class PlayerController {
   private findPath(targetX: number, targetY: number): void {
     if (!this.player) return;
 
-    const settings = SettingsManager.getInstance().getControlSettings();
-    
-    if (settings.autoPathEnabled) {
+    if (this.controlSettings.autoPathEnabled) {
       const path = this.pathfindingSystem.findPath(
         { x: this.player.x, y: this.player.y },
         { x: targetX, y: targetY }
