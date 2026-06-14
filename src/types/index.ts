@@ -5,7 +5,15 @@ export enum PetalType {
   GLOWING = 'glowing',
   DREAM = 'dream',
   ETERNAL = 'eternal',
-  WAKEUP = 'wakeup'
+  WAKEUP = 'wakeup',
+  MOONLIGHT_SHIMMER = 'moonlight_shimmer',
+  STARLIGHT_BURST = 'starlight_burst',
+  DEW_CRYSTAL = 'dew_crystal',
+  GLOWING_EMBER = 'glowing_ember',
+  DREAM_PHANTOM = 'dream_phantom',
+  FAILED_DUST = 'failed_dust',
+  FAILED_SLIME = 'failed_slime',
+  FAILED_ASH = 'failed_ash'
 }
 
 export enum GameStateKey {
@@ -13,6 +21,12 @@ export enum GameStateKey {
   PRELOADER = 'Preloader',
   GAME = 'Game',
   RESULT = 'Result'
+}
+
+export enum SynthesisResultType {
+  NORMAL = 'normal',
+  MUTATION = 'mutation',
+  FAIL = 'fail'
 }
 
 export interface PetalConfig {
@@ -23,6 +37,20 @@ export interface PetalConfig {
   glowColor: number;
   spawnWeight: number;
   description: string;
+  isMutation?: boolean;
+  isFailed?: boolean;
+  category: 'normal' | 'mutation' | 'failed';
+}
+
+export interface MutationOutcome {
+  type: PetalType;
+  probability: number;
+}
+
+export interface FailOutcome {
+  type: PetalType;
+  probability: number;
+  returnRatio: number;
 }
 
 export interface SynthesisRecipe {
@@ -30,6 +58,13 @@ export interface SynthesisRecipe {
   inputs: { type: PetalType; count: number }[];
   output: { type: PetalType; count: number };
   animationType: 'merge' | 'transform' | 'explode';
+  mutationChance?: number;
+  mutationOutcomes?: MutationOutcome[];
+  failChance?: number;
+  failOutcomes?: FailOutcome[];
+  hintNormal?: string;
+  hintMutation?: string;
+  hintFail?: string;
 }
 
 export interface GameState {
@@ -39,9 +74,14 @@ export interface GameState {
   unlockedPetals: PetalType[];
   totalCollected: number;
   totalSynthesized: number;
+  totalMutations: number;
+  totalFailures: number;
   playTime: number;
   isCompleted: boolean;
   hasWakeUp: boolean;
+  unlockedRecipes: string[];
+  discoveredMutations: PetalType[];
+  discoveredFailures: PetalType[];
 }
 
 export interface SaveData {
@@ -61,12 +101,23 @@ export interface PetalObject extends Phaser.Physics.Arcade.Sprite {
   floatOffset: number;
 }
 
+export interface SynthesisResultData {
+  recipeId: string;
+  resultType: SynthesisResultType;
+  output: PetalType;
+  count: number;
+  returnedPetals?: { type: PetalType; count: number }[];
+}
+
 export interface GameEvents {
   'petal:collected': { type: PetalType; count: number };
   'petal:spawned': { type: PetalType; x: number; y: number };
   'synthesis:start': { recipeId: string };
-  'synthesis:complete': { output: PetalType; count: number };
-  'synthesis:fail': { reason: string };
+  'synthesis:complete': SynthesisResultData;
+  'synthesis:mutation': SynthesisResultData;
+  'synthesis:fail': SynthesisResultData;
+  'synthesis:recipe_unlocked': { recipeId: string };
+  'collection:unlock': { type: PetalType; category: 'normal' | 'mutation' | 'failed' };
   'game:complete': { playTime: number; totalCollected: number };
   'audio:play': { key: string; volume?: number };
   'save:update': { state: GameState };

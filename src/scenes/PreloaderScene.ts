@@ -101,6 +101,8 @@ export class PreloaderScene extends Phaser.Scene {
     this.load.audio('sfx_click', this.createSilentAudio());
     this.load.audio('sfx_synthesis_start', this.createSilentAudio());
     this.load.audio('sfx_synthesis_complete', this.createSilentAudio());
+    this.load.audio('sfx_synthesis_mutation', this.createSilentAudio());
+    this.load.audio('sfx_synthesis_fail', this.createSilentAudio());
     this.load.audio('sfx_wakeup', this.createSilentAudio());
   }
 

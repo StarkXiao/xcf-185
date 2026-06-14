@@ -243,7 +243,7 @@ export class PetalSystem {
     });
   }
 
-  public spawnSynthesisResult(type: PetalType, x: number, y: number): void {
+  public spawnSynthesisResult(type: PetalType, x: number, y: number, isMutation: boolean = false): void {
     if (!this.petalGroup) return;
 
     const config = PETAL_CONFIGS[type];
@@ -257,25 +257,83 @@ export class PetalSystem {
     petal.setActive(true);
     petal.setVisible(true);
     petal.setSize(30, 30);
-    petal.setDisplaySize(60 + config.level * 10, 60 + config.level * 10);
+    
+    const baseSize = 60 + config.level * 10;
+    const sizeMultiplier = isMutation ? 1.3 : config.isFailed ? 0.7 : 1;
+    petal.setDisplaySize(baseSize * sizeMultiplier, baseSize * sizeMultiplier);
     petal.setDepth(60);
-    petal.setBlendMode(Phaser.BlendModes.ADD);
+    
+    if (config.isFailed) {
+      petal.setBlendMode(Phaser.BlendModes.NORMAL);
+    } else {
+      petal.setBlendMode(Phaser.BlendModes.ADD);
+    }
+    
     petal.setAlpha(0);
     petal.setScale(0);
 
-    this.scene.tweens.add({
-      targets: petal,
-      alpha: 1,
-      scale: 1,
-      duration: 500,
-      ease: 'Elastic.out'
-    });
+    if (isMutation) {
+      this.scene.tweens.add({
+        targets: petal,
+        alpha: 1,
+        scale: 1,
+        duration: 800,
+        ease: 'Elastic.out'
+      });
+      
+      this.scene.tweens.add({
+        targets: petal,
+        scale: { from: 1, to: 1.1 },
+        yoyo: true,
+        repeat: 3,
+        duration: 300,
+        delay: 800
+      });
+    } else if (config.isFailed) {
+      this.scene.tweens.add({
+        targets: petal,
+        alpha: { from: 0, to: 0.8 },
+        scale: 1,
+        duration: 400,
+        ease: 'Cubic.out'
+      });
+      
+      this.scene.tweens.add({
+        targets: petal,
+        y: y + 30,
+        alpha: 0.6,
+        duration: 600,
+        delay: 400,
+        ease: 'Cubic.In'
+      });
+    } else {
+      this.scene.tweens.add({
+        targets: petal,
+        alpha: 1,
+        scale: 1,
+        duration: 500,
+        ease: 'Elastic.out'
+      });
+    }
 
     this.petalPool.push(petal);
 
     if (this.collectParticles) {
-      this.collectParticles.setParticleTint(config.glowColor);
-      this.collectParticles.emitParticleAt(x, y, 20);
+      if (isMutation) {
+        const colors = [0xffaa00, 0xff6600, config.glowColor];
+        colors.forEach((color, i) => {
+          this.scene.time.delayedCall(i * 100, () => {
+            this.collectParticles!.setParticleTint(color);
+            this.collectParticles!.emitParticleAt(x, y, 15);
+          });
+        });
+      } else if (config.isFailed) {
+        this.collectParticles.setParticleTint(0x666666);
+        this.collectParticles.emitParticleAt(x, y, 10);
+      } else {
+        this.collectParticles.setParticleTint(config.glowColor);
+        this.collectParticles.emitParticleAt(x, y, 20);
+      }
     }
   }
 
