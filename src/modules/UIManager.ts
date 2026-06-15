@@ -24,7 +24,9 @@ import {
   VisitorOrder,
   VisitorOrderStatus,
   AffectionLevel,
-  VisitorReward
+  VisitorReward,
+  ProcessingType,
+  WorkshopRecipe
 } from '../types';
 import { 
   PETAL_CONFIGS, 
@@ -32,7 +34,8 @@ import {
   GAME_WIDTH, 
   GAME_HEIGHT,
   DEFAULT_QUICK_ENTRIES,
-  VISITOR_SPRITE_CONFIGS
+  VISITOR_SPRITE_CONFIGS,
+  WORKSHOP_RECIPES
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -41,6 +44,7 @@ import { SynthesisSystem } from './SynthesisSystem';
 import { VisitorSpriteSystem } from './VisitorSpriteSystem';
 import { RegionUnlockSystem } from './RegionUnlockSystem';
 import { RegionMapPanel } from './RegionMapPanel';
+import { PetalWorkshopSystem } from './PetalWorkshopSystem';
 import { AudioManager } from '../managers/AudioManager';
 
 type CollectionCategory = 'normal' | 'mutation' | 'failed';
@@ -77,14 +81,19 @@ export class UIManager {
   private visitorSpriteSystem: VisitorSpriteSystem;
   private visitorPanel: Phaser.GameObjects.Container | null = null;
   private regionUnlockSystem: RegionUnlockSystem;
+  private petalWorkshopSystem: PetalWorkshopSystem;
   private regionMapPanel: RegionMapPanel | null = null;
   private mapButton: Phaser.GameObjects.Container | null = null;
+  private workshopPanel: Phaser.GameObjects.Container | null = null;
+  private workshopStatsPanel: Phaser.GameObjects.Container | null = null;
+  private workshopButtonRedDot: Phaser.GameObjects.Graphics | null = null;
 
-  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem, visitorSpriteSystem: VisitorSpriteSystem, regionUnlockSystem: RegionUnlockSystem) {
+  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem, visitorSpriteSystem: VisitorSpriteSystem, regionUnlockSystem: RegionUnlockSystem, petalWorkshopSystem: PetalWorkshopSystem) {
     this.scene = scene;
     this.synthesisSystem = synthesisSystem;
     this.visitorSpriteSystem = visitorSpriteSystem;
     this.regionUnlockSystem = regionUnlockSystem;
+    this.petalWorkshopSystem = petalWorkshopSystem;
   }
 
   public create(): void {
@@ -130,6 +139,7 @@ export class UIManager {
     this.createProgressUI();
     this.createInfoCenterButton();
     this.createVisitorButton();
+    this.createWorkshopButton();
     this.createMapButton();
     this.createMiniGoalDisplay();
     this.createMiniTrendDisplay();
@@ -437,6 +447,48 @@ export class UIManager {
     this.container.add([btnBg, btnText, button, this.visitorButtonRedDot]);
   }
 
+  private createWorkshopButton(): void {
+    if (!this.container) return;
+
+    const btnX = 55;
+    const btnY = 285;
+
+    const btnBg = this.scene.add.graphics();
+    btnBg.fillStyle(0xff9900, 0.8);
+    btnBg.fillCircle(btnX, btnY, 28);
+
+    btnBg.lineStyle(2, 0xffffff, 0.5);
+    btnBg.strokeCircle(btnX, btnY, 28);
+
+    const btnText = this.scene.add.text(btnX, btnY, '🔧', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const unlockedRecipes = this.petalWorkshopSystem.getUnlockedRecipes();
+    const activeJobs = this.petalWorkshopSystem.getActiveJobs();
+
+    this.workshopButtonRedDot = this.scene.add.graphics();
+    this.workshopButtonRedDot.fillStyle(0xff4444, 1);
+    this.workshopButtonRedDot.fillCircle(btnX + 22, btnY - 20, 8);
+    this.workshopButtonRedDot.setVisible(unlockedRecipes.length > 0 || activeJobs.length > 0);
+
+    const button = this.scene.add.zone(btnX, btnY, 56, 56)
+      .setInteractive({ useHandCursor: true });
+
+    button.on('pointerdown', () => btnBg.setScale(0.9));
+    button.on('pointerup', () => {
+      btnBg.setScale(1);
+      this.toggleWorkshopPanel();
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+    });
+    button.on('pointerout', () => btnBg.setScale(1));
+
+    this.container.add([btnBg, btnText, button, this.workshopButtonRedDot]);
+  }
+
   private createMapButton(): void {
     if (!this.container) return;
 
@@ -491,6 +543,9 @@ export class UIManager {
     }
     if (this.visitorPanel?.visible) {
       this.toggleVisitorPanel();
+    }
+    if (this.workshopPanel?.visible) {
+      this.toggleWorkshopPanel();
     }
     if (this.regionMapPanel && (this.regionMapPanel as any).isOpen) {
       this.regionMapPanel.closePanel();
@@ -3935,6 +3990,513 @@ export class UIManager {
     }
   }
 
+  private toggleWorkshopPanel(): void {
+    if (this.workshopPanel) {
+      this.closeWorkshopPanel();
+    } else {
+      this.openWorkshopPanel();
+    }
+  }
+
+  private openWorkshopPanel(): void {
+    if (!this.container) return;
+
+    this.closeAllPanels();
+    EventManager.getInstance().emit('workshop:panel_opened', {});
+
+    this.workshopPanel = this.scene.add.container(0, 0).setDepth(150).setScrollFactor(0);
+
+    const panelBg = this.scene.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.95);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.workshopPanel.add(panelBg);
+
+    const title = this.scene.add.text(GAME_WIDTH / 2, 50, '花瓣工坊', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ff9900',
+      align: 'center',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    this.workshopPanel.add(title);
+
+    const stats = this.petalWorkshopSystem.getProductionStats();
+    const statsText = this.scene.add.text(GAME_WIDTH / 2, 85,
+      `加工: ${stats.totalProcessed} | 产出: ${stats.totalOutput} | 升级: ${stats.totalUpgrades}`, {
+      fontFamily: 'Arial',
+      fontSize: '13px',
+      color: '#ffcc80',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.workshopPanel.add(statsText);
+
+    const activeJobs = this.petalWorkshopSystem.getActiveJobs();
+    if (activeJobs.length > 0) {
+      const jobY = 110;
+      const jobTitle = this.scene.add.text(GAME_WIDTH / 2, jobY, '⏳ 进行中', {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#66ddff',
+        align: 'center'
+      }).setOrigin(0.5);
+      this.workshopPanel.add(jobTitle);
+
+      activeJobs.forEach((job, idx) => {
+        const recipe = this.petalWorkshopSystem.getRecipe(job.recipeId);
+        if (!recipe) return;
+        const progress = this.petalWorkshopSystem.getJobProgress(job.id);
+        const outputConfig = PETAL_CONFIGS[recipe.output.type];
+        const jobText = this.scene.add.text(60, jobY + 22 + idx * 25,
+          `${recipe.description} ×${job.batchCount} - ${Math.floor(progress * 100)}%`, {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: '#ffffff',
+          align: 'left'
+        });
+        this.workshopPanel.add(jobText);
+
+        const jobBarBg = this.scene.add.graphics();
+        jobBarBg.fillStyle(0x333333, 0.8);
+        jobBarBg.fillRoundedRect(GAME_WIDTH - 160, jobY + 20 + idx * 25, 100, 12, 4);
+        this.workshopPanel.add(jobBarBg);
+
+        const jobBarFill = this.scene.add.graphics();
+        jobBarFill.fillStyle(outputConfig.glowColor, 0.9);
+        jobBarFill.fillRoundedRect(GAME_WIDTH - 160, jobY + 20 + idx * 25, 100 * progress, 12, 4);
+        this.workshopPanel.add(jobBarFill);
+      });
+    }
+
+    const recipeStartY = activeJobs.length > 0 ? 120 + activeJobs.length * 25 + 10 : 110;
+    const unlockedRecipes = this.petalWorkshopSystem.getUnlockedRecipes();
+    const allRecipes = WORKSHOP_RECIPES;
+
+    const scrollableY = recipeStartY;
+    const maxY = GAME_HEIGHT - 80;
+    const visibleHeight = maxY - scrollableY;
+
+    const clipContainer = this.scene.add.container(0, scrollableY);
+    this.workshopPanel.add(clipContainer);
+
+    let contentY = 0;
+    allRecipes.forEach((recipe) => {
+      const recipeState = this.petalWorkshopSystem.getRecipeState(recipe.id);
+      const isUnlocked = recipeState?.isUnlocked || false;
+      const cardHeight = 130;
+
+      if (contentY > visibleHeight + cardHeight) return;
+
+      const cardContainer = this.scene.add.container(0, contentY);
+
+      const cardBg = this.scene.add.graphics();
+      const canProcess = isUnlocked && this.petalWorkshopSystem.canProcess(recipe.id);
+      cardBg.fillStyle(isUnlocked ? (canProcess ? 0x1a0a2e : 0x0f0a1e) : 0x0a0a0a, 0.85);
+      cardBg.fillRoundedRect(30, 0, GAME_WIDTH - 60, cardHeight, 12);
+
+      const borderColor = isUnlocked
+        ? (recipe.processingType === ProcessingType.REFINING ? 0xff9900
+          : recipe.processingType === ProcessingType.PURIFYING ? 0x66ddff
+          : 0xff66cc)
+        : 0x333333;
+      cardBg.lineStyle(2, borderColor, isUnlocked ? 0.6 : 0.2);
+      cardBg.strokeRoundedRect(30, 0, GAME_WIDTH - 60, cardHeight, 12);
+      cardContainer.add(cardBg);
+
+      const typeLabel = recipe.processingType === ProcessingType.REFINING ? '精炼'
+        : recipe.processingType === ProcessingType.PURIFYING ? '提纯' : '强化';
+      const typeColor = recipe.processingType === ProcessingType.REFINING ? '#ff9900'
+        : recipe.processingType === ProcessingType.PURIFYING ? '#66ddff' : '#ff66cc';
+
+      if (!isUnlocked) {
+        const lockText = this.scene.add.text(GAME_WIDTH / 2, cardHeight / 2, `🔒 ${typeLabel} - 未解锁`, {
+          fontFamily: 'Arial',
+          fontSize: '16px',
+          color: '#666666',
+          align: 'center'
+        }).setOrigin(0.5);
+        cardContainer.add(lockText);
+      } else {
+        const typeTag = this.scene.add.text(50, 10, `[${typeLabel}]`, {
+          fontFamily: 'Arial',
+          fontSize: '11px',
+          color: typeColor,
+          align: 'left'
+        });
+        cardContainer.add(typeTag);
+
+        const level = recipeState?.currentLevel || 1;
+        if (level > 1) {
+          const levelTag = this.scene.add.text(120, 10, `Lv.${level}`, {
+            fontFamily: 'Arial',
+            fontSize: '11px',
+            color: '#ffcc00',
+            align: 'left'
+          });
+          cardContainer.add(levelTag);
+        }
+
+        const state = SaveManager.getInstance().getGameState();
+        let offsetX = 55;
+        recipe.inputs.forEach((input, idx) => {
+          const config = PETAL_CONFIGS[input.type];
+          const hasEnough = (state.petals[input.type] || 0) >= input.count;
+
+          const petalImg = this.scene.add.image(offsetX, 50, `petal_${input.type}`)
+            .setDisplaySize(36, 36)
+            .setBlendMode(config.isFailed ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD)
+            .setAlpha(hasEnough ? 1 : 0.4);
+
+          const countText = this.scene.add.text(offsetX, 78,
+            `${state.petals[input.type] || 0}/${input.count}`, {
+            fontFamily: 'Arial',
+            fontSize: '11px',
+            color: hasEnough ? '#a8e6cf' : '#ff6b6b',
+            align: 'center'
+          }).setOrigin(0.5);
+
+          cardContainer.add([petalImg, countText]);
+
+          if (idx < recipe.inputs.length - 1) {
+            const plusText = this.scene.add.text(offsetX + 32, 50, '+', {
+              fontFamily: 'Arial',
+              fontSize: '16px',
+              color: '#ffffff'
+            }).setOrigin(0.5);
+            cardContainer.add(plusText);
+          }
+          offsetX += 75;
+        });
+
+        const arrowText = this.scene.add.text(offsetX + 10, 50, '→', {
+          fontFamily: 'Arial',
+          fontSize: '20px',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        cardContainer.add(arrowText);
+
+        const outputConfig = PETAL_CONFIGS[recipe.output.type];
+        const effectiveOutput = level > 1
+          ? recipe.output.count + (level - 1) * recipe.upgradeOutputBonus
+          : recipe.output.count;
+        const outputImg = this.scene.add.image(offsetX + 50, 50, `petal_${recipe.output.type}`)
+          .setDisplaySize(42, 42)
+          .setBlendMode(outputConfig.isFailed ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
+        const outputName = this.scene.add.text(offsetX + 50, 78, `${outputConfig.name}×${effectiveOutput}`, {
+          fontFamily: 'Arial',
+          fontSize: '10px',
+          color: '#ffffff',
+          align: 'center'
+        }).setOrigin(0.5);
+        cardContainer.add([outputImg, outputName]);
+
+        const effectiveRate = Math.min(1, recipe.successRate + (level - 1) * recipe.upgradeSuccessRateBonus);
+        const rateText = this.scene.add.text(50, 95,
+          `成功率: ${Math.round(effectiveRate * 100)}% | 耗时: ${(recipe.processingTime / 1000).toFixed(1)}s | 批量上限: ×${recipe.batchMax}`, {
+          fontFamily: 'Arial',
+          fontSize: '10px',
+          color: '#888888',
+          align: 'left'
+        });
+        cardContainer.add(rateText);
+
+        const btnX = GAME_WIDTH - 120;
+        const btnY = 50;
+
+        const maxBatch = this.petalWorkshopSystem.getMaxBatchForRecipe(recipe.id);
+        if (canProcess && maxBatch > 0) {
+          const processBtnBg = this.scene.add.graphics();
+          processBtnBg.fillStyle(0xff9900, 0.85);
+          processBtnBg.fillRoundedRect(btnX - 40, btnY - 18, 80, 36, 8);
+
+          const processBtnText = this.scene.add.text(btnX, btnY, '加工', {
+            fontFamily: 'Arial',
+            fontSize: '14px',
+            color: '#ffffff',
+            align: 'center'
+          }).setOrigin(0.5);
+
+          const processBtnZone = this.scene.add.zone(btnX, btnY, 80, 36)
+            .setInteractive({ useHandCursor: true });
+
+          processBtnZone.on('pointerup', () => {
+            this.petalWorkshopSystem.startProcessing(recipe.id, 1);
+            this.refreshWorkshopPanel();
+          });
+
+          cardContainer.add([processBtnBg, processBtnText, processBtnZone]);
+
+          if (maxBatch > 1) {
+            const batchBtnBg = this.scene.add.graphics();
+            batchBtnBg.fillStyle(0xff6600, 0.85);
+            batchBtnBg.fillRoundedRect(btnX - 40, btnY + 24, 80, 28, 6);
+
+            const batchText = this.scene.add.text(btnX, btnY + 38, `批量×${Math.min(maxBatch, recipe.batchMax)}`, {
+              fontFamily: 'Arial',
+              fontSize: '11px',
+              color: '#ffffff',
+              align: 'center'
+            }).setOrigin(0.5);
+
+            const batchBtnZone = this.scene.add.zone(btnX, btnY + 38, 80, 28)
+              .setInteractive({ useHandCursor: true });
+
+            batchBtnZone.on('pointerup', () => {
+              const batch = Math.min(maxBatch, recipe.batchMax);
+              this.petalWorkshopSystem.startProcessing(recipe.id, batch);
+              this.refreshWorkshopPanel();
+            });
+
+            cardContainer.add([batchBtnBg, batchText, batchBtnZone]);
+          }
+        }
+
+        if (this.petalWorkshopSystem.canUpgradeRecipe(recipe.id)) {
+          const upgradeBtnY = canProcess && maxBatch > 1 ? btnY + 60 : btnY + 24;
+          const upgradeBtnBg = this.scene.add.graphics();
+          upgradeBtnBg.fillStyle(0x9933ff, 0.85);
+          upgradeBtnBg.fillRoundedRect(btnX - 40, upgradeBtnY, 80, 26, 6);
+
+          const upgradeCost = this.petalWorkshopSystem.getUpgradeCost(recipe.id);
+          const costStr = upgradeCost ? upgradeCost.map(c => `${PETAL_CONFIGS[c.type].name}×${c.count}`).join(' ') : '';
+
+          const upgradeBtnText = this.scene.add.text(btnX, upgradeBtnY + 13, `↑Lv.${(recipeState?.currentLevel || 1) + 1}`, {
+            fontFamily: 'Arial',
+            fontSize: '11px',
+            color: '#ffffff',
+            align: 'center'
+          }).setOrigin(0.5);
+
+          const upgradeBtnZone = this.scene.add.zone(btnX, upgradeBtnY + 13, 80, 26)
+            .setInteractive({ useHandCursor: true });
+
+          upgradeBtnZone.on('pointerup', () => {
+            this.petalWorkshopSystem.upgradeRecipe(recipe.id);
+            this.refreshWorkshopPanel();
+          });
+
+          cardContainer.add([upgradeBtnBg, upgradeBtnText, upgradeBtnZone]);
+
+          if (costStr) {
+            const costText = this.scene.add.text(btnX - 30, upgradeBtnY + 26, costStr, {
+              fontFamily: 'Arial',
+              fontSize: '9px',
+              color: '#cc99ff',
+              align: 'left'
+            });
+            cardContainer.add(costText);
+          }
+        }
+      }
+
+      clipContainer.add(cardContainer);
+      contentY += cardHeight + 8;
+    });
+
+    const statsBtnBg = this.scene.add.graphics();
+    statsBtnBg.fillStyle(0x336699, 0.8);
+    statsBtnBg.fillRoundedRect(GAME_WIDTH / 2 - 60, GAME_HEIGHT - 65, 120, 35, 10);
+
+    const statsBtnText = this.scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 48, '产出统计', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const statsBtnZone = this.scene.add.zone(GAME_WIDTH / 2, GAME_HEIGHT - 48, 120, 35)
+      .setInteractive({ useHandCursor: true });
+
+    statsBtnZone.on('pointerup', () => {
+      this.toggleWorkshopStatsPanel();
+    });
+
+    this.workshopPanel.add([statsBtnBg, statsBtnText, statsBtnZone]);
+
+    const closeBtn = this.scene.add.text(GAME_WIDTH - 50, 40, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    closeBtn.on('pointerup', () => this.closeWorkshopPanel());
+    this.workshopPanel.add(closeBtn);
+
+    this.workshopPanel.setAlpha(0);
+    this.scene.tweens.add({
+      targets: this.workshopPanel,
+      alpha: 1,
+      duration: 300
+    });
+
+    this.container.add(this.workshopPanel);
+  }
+
+  private closeWorkshopPanel(): void {
+    if (!this.workshopPanel || !this.container) return;
+
+    this.scene.tweens.add({
+      targets: this.workshopPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.workshopPanel) {
+          this.container!.remove(this.workshopPanel);
+          this.workshopPanel.destroy();
+          this.workshopPanel = null;
+        }
+      }
+    });
+  }
+
+  private refreshWorkshopPanel(): void {
+    if (!this.workshopPanel) return;
+    this.closeWorkshopPanel();
+    this.scene.time.delayedCall(250, () => {
+      this.openWorkshopPanel();
+    });
+  }
+
+  private toggleWorkshopStatsPanel(): void {
+    if (this.workshopStatsPanel) {
+      this.closeWorkshopStatsPanel();
+    } else {
+      this.openWorkshopStatsPanel();
+    }
+  }
+
+  private openWorkshopStatsPanel(): void {
+    if (!this.container) return;
+
+    this.workshopStatsPanel = this.scene.add.container(0, 0).setDepth(160).setScrollFactor(0);
+
+    const panelBg = this.scene.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.95);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.workshopStatsPanel.add(panelBg);
+
+    const title = this.scene.add.text(GAME_WIDTH / 2, 50, '工坊产出统计', {
+      fontFamily: 'Arial',
+      fontSize: '26px',
+      color: '#ff9900',
+      align: 'center',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5);
+    this.workshopStatsPanel.add(title);
+
+    const stats = this.petalWorkshopSystem.getProductionStats();
+    const records = this.petalWorkshopSystem.getProductionRecords();
+
+    const statItems = [
+      { label: '总加工次数', value: stats.totalProcessed.toString(), color: '#ff9900' },
+      { label: '总产出数量', value: stats.totalOutput.toString(), color: '#a8e6cf' },
+      { label: '批量操作次数', value: stats.totalBatchOperations.toString(), color: '#66ddff' },
+      { label: '配方升级次数', value: stats.totalUpgrades.toString(), color: '#cc99ff' },
+      { label: '平均每次产出', value: stats.averageOutputPerRun.toFixed(1), color: '#ffcc80' },
+      { label: '最大批量规模', value: stats.peakBatchSize.toString(), color: '#ff6b9d' },
+      { label: '总加工耗时', value: `${(stats.totalProcessingTime / 1000).toFixed(1)}s`, color: '#88ccff' },
+      { label: '精炼次数', value: (stats.recipesByProcessingType[ProcessingType.REFINING] || 0).toString(), color: '#ff9900' },
+      { label: '提纯次数', value: (stats.recipesByProcessingType[ProcessingType.PURIFYING] || 0).toString(), color: '#66ddff' },
+      { label: '强化次数', value: (stats.recipesByProcessingType[ProcessingType.ENHANCING] || 0).toString(), color: '#ff66cc' }
+    ];
+
+    const colWidth = (GAME_WIDTH - 80) / 2;
+    statItems.forEach((item, idx) => {
+      const col = idx % 2;
+      const row = Math.floor(idx / 2);
+      const x = 50 + col * colWidth;
+      const y = 100 + row * 40;
+
+      const label = this.scene.add.text(x, y, item.label, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: '#888888'
+      });
+      const value = this.scene.add.text(x + colWidth - 30, y, item.value, {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: item.color,
+        align: 'right'
+      }).setOrigin(1, 0);
+
+      this.workshopStatsPanel!.add([label, value]);
+    });
+
+    const recordStartY = 310;
+    const recordTitle = this.scene.add.text(GAME_WIDTH / 2, recordStartY, '最近产出记录', {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#ffcc80',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.workshopStatsPanel.add(recordTitle);
+
+    const maxRecords = Math.min(records.length, 8);
+    for (let i = 0; i < maxRecords; i++) {
+      const record = records[i];
+      const recipe = this.petalWorkshopSystem.getRecipe(record.recipeId);
+      const outputConfig = PETAL_CONFIGS[record.resultType];
+      const time = new Date(record.timestamp);
+      const timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+
+      const recordText = this.scene.add.text(50, recordStartY + 30 + i * 30,
+        `${timeStr} ${recipe?.description || record.recipeId} ×${record.batchCount} → +${record.resultCount} ${outputConfig.name}${record.wasUpgraded ? ' ⬆' : ''}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: record.resultCount > 0 ? '#ffffff' : '#ff6b6b'
+      });
+      this.workshopStatsPanel.add(recordText);
+    }
+
+    if (records.length === 0) {
+      const emptyText = this.scene.add.text(GAME_WIDTH / 2, recordStartY + 50, '暂无产出记录', {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#666666',
+        align: 'center'
+      }).setOrigin(0.5);
+      this.workshopStatsPanel.add(emptyText);
+    }
+
+    const closeBtn = this.scene.add.text(GAME_WIDTH - 50, 40, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    closeBtn.on('pointerup', () => this.closeWorkshopStatsPanel());
+    this.workshopStatsPanel.add(closeBtn);
+
+    this.workshopStatsPanel.setAlpha(0);
+    this.scene.tweens.add({
+      targets: this.workshopStatsPanel,
+      alpha: 1,
+      duration: 300
+    });
+
+    this.container.add(this.workshopStatsPanel);
+  }
+
+  private closeWorkshopStatsPanel(): void {
+    if (!this.workshopStatsPanel || !this.container) return;
+
+    this.scene.tweens.add({
+      targets: this.workshopStatsPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.workshopStatsPanel) {
+          this.container!.remove(this.workshopStatsPanel);
+          this.workshopStatsPanel.destroy();
+          this.workshopStatsPanel = null;
+        }
+      }
+    });
+  }
+
   private closeInfoCenterPanel(): void {
     if (!this.infoCenterPanel || !this.container) return;
 
@@ -4002,6 +4564,14 @@ export class UIManager {
     }
     if (this.settingsPanel) {
       this.settingsPanel.destroy();
+    }
+    if (this.workshopPanel) {
+      this.workshopPanel.destroy();
+      this.workshopPanel = null;
+    }
+    if (this.workshopStatsPanel) {
+      this.workshopStatsPanel.destroy();
+      this.workshopStatsPanel = null;
     }
     if (this.container) {
       this.container.destroy();

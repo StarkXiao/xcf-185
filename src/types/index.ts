@@ -200,6 +200,7 @@ export interface GameState {
   regionUnlockStates: RegionUnlockState[];
   currentRegionId: string | null;
   lastRegionId: string | null;
+  workshopState: WorkshopState;
 }
 
 export interface AudioContextPreferences {
@@ -842,6 +843,75 @@ export interface VisitorInteractionRecord {
   details?: string;
 }
 
+export enum ProcessingType {
+  REFINING = 'refining',
+  PURIFYING = 'purifying',
+  ENHANCING = 'enhancing'
+}
+
+export interface WorkshopRecipe {
+  id: string;
+  inputs: { type: PetalType; count: number }[];
+  output: { type: PetalType; count: number };
+  processingType: ProcessingType;
+  processingTime: number;
+  batchMax: number;
+  successRate: number;
+  upgradeLevel: number;
+  upgradeCost: { type: PetalType; count: number }[];
+  upgradeSuccessRateBonus: number;
+  upgradeOutputBonus: number;
+  unlockCondition: { type: PetalType; count: number }[];
+  description: string;
+}
+
+export interface WorkshopProductionRecord {
+  id: string;
+  recipeId: string;
+  batchCount: number;
+  resultType: PetalType;
+  resultCount: number;
+  timestamp: number;
+  processingTime: number;
+  wasUpgraded: boolean;
+}
+
+export interface WorkshopRecipeState {
+  recipeId: string;
+  isUnlocked: boolean;
+  currentLevel: number;
+  totalProduced: number;
+  totalBatchRuns: number;
+  lastProducedAt: number;
+}
+
+export interface WorkshopProductionStats {
+  totalProcessed: number;
+  totalOutput: number;
+  totalBatchOperations: number;
+  totalUpgrades: number;
+  averageOutputPerRun: number;
+  recipesByProcessingType: Record<ProcessingType, number>;
+  peakBatchSize: number;
+  totalProcessingTime: number;
+}
+
+export interface WorkshopActiveJob {
+  id: string;
+  recipeId: string;
+  batchCount: number;
+  startTime: number;
+  duration: number;
+  isUpgraded: boolean;
+}
+
+export interface WorkshopState {
+  recipeStates: WorkshopRecipeState[];
+  activeJobs: WorkshopActiveJob[];
+  productionStats: WorkshopProductionStats;
+  productionRecords: WorkshopProductionRecord[];
+}
+
 export interface GameEvents {
   'petal:collected': { 
     type: PetalType; 
@@ -943,4 +1013,11 @@ export interface GameEvents {
   'region:condition_progress': { regionId: string; conditionIndex: number; current: number; target: number };
   'region:map_opened': {};
   'region:navigate_request': { regionId: string };
+  'workshop:processing_start': { recipeId: string; batchCount: number };
+  'workshop:processing_complete': { recipeId: string; batchCount: number; outputType: PetalType; outputCount: number };
+  'workshop:batch_complete': { recipeId: string; totalBatches: number; totalOutput: number };
+  'workshop:recipe_upgrade': { recipeId: string; newLevel: number };
+  'workshop:recipe_unlocked': { recipeId: string };
+  'workshop:panel_opened': {};
+  'workshop:stats_updated': { stats: WorkshopProductionStats };
 }

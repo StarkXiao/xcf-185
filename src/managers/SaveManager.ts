@@ -30,7 +30,9 @@ import {
   DailyRewardState,
   EnvironmentState,
   EnvironmentStats,
-  RareDropEvent
+  RareDropEvent,
+  WorkshopState,
+  ProcessingType
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -70,7 +72,9 @@ import {
   RARE_DROP_EVENTS,
   INITIAL_VISITOR_SYSTEM_STATE,
   getInitialRegionUnlockStates,
-  getDefaultCurrentRegionId
+  getDefaultCurrentRegionId,
+  WORKSHOP_RECIPES,
+  INITIAL_WORKSHOP_STATE
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -112,10 +116,12 @@ export class SaveManager {
     this.migrationMap.set('5.1.0', this.migrateFrom5_1_0.bind(this));
     this.migrationMap.set('5.2.0', this.migrateFrom5_2_0.bind(this));
     this.migrationMap.set('5.3.0', this.migrateFrom5_3_0.bind(this));
+    this.migrationMap.set('5.3.1', this.migrateFrom5_3_1.bind(this));
+    this.migrationMap.set('5.4.0', this.migrateFrom5_4_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -470,6 +476,51 @@ export class SaveManager {
           if (typeof state.totalTimeSpent === 'number' && state.totalTimeSpent > 100000) {
             saveData.gameState.regionUnlockStates[idx].totalTimeSpent = Math.floor(state.totalTimeSpent / 1000);
             warnings.push(`区域 ${state.regionId} 停留时间异常，已从毫秒转换为秒`);
+          }
+        });
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_3_1(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_4_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.workshopState) {
+        saveData.gameState.workshopState = JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE));
+        warnings.push('新增花瓣工坊系统状态已设为默认值');
+      } else {
+        const workshop = saveData.gameState.workshopState;
+        if (!workshop.recipeStates || workshop.recipeStates.length === 0) {
+          workshop.recipeStates = JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE.recipeStates));
+        }
+        if (!workshop.productionStats) {
+          workshop.productionStats = JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE.productionStats));
+        }
+        if (!Array.isArray(workshop.activeJobs)) {
+          workshop.activeJobs = [];
+        }
+        if (!Array.isArray(workshop.productionRecords)) {
+          workshop.productionRecords = [];
+        }
+        const initialRecipeIds = WORKSHOP_RECIPES.map(r => r.id);
+        const existingIds = new Set(workshop.recipeStates.map((rs: any) => rs.recipeId));
+        initialRecipeIds.forEach(recipeId => {
+          if (!existingIds.has(recipeId)) {
+            workshop.recipeStates.push({
+              recipeId,
+              isUnlocked: false,
+              currentLevel: 1,
+              totalProduced: 0,
+              totalBatchRuns: 0,
+              lastProducedAt: 0
+            });
+            warnings.push(`新增工坊配方 ${recipeId} 已添加默认状态`);
           }
         });
       }

@@ -43,7 +43,12 @@ import {
   VisitorSystemState,
   VisitorOrderStatus,
   AffectionLevel,
-  VisitorReward
+  VisitorReward,
+  WorkshopRecipe,
+  WorkshopState,
+  WorkshopRecipeState,
+  WorkshopProductionStats,
+  ProcessingType
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -2241,6 +2246,159 @@ export const INITIAL_ENVIRONMENT_STATS: EnvironmentStats = {
   totalRareDrops: 0
 };
 
+export const WORKSHOP_RECIPES: WorkshopRecipe[] = [
+  {
+    id: 'workshop_refine_moonlight',
+    inputs: [{ type: PetalType.MOONLIGHT, count: 5 }],
+    output: { type: PetalType.STARLIGHT, count: 2 },
+    processingType: ProcessingType.REFINING,
+    processingTime: 3000,
+    batchMax: 5,
+    successRate: 0.9,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.MOONLIGHT, count: 10 }],
+    upgradeSuccessRateBonus: 0.05,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.MOONLIGHT, count: 5 }],
+    description: '将月光花瓣精炼为更高纯度的星光花瓣'
+  },
+  {
+    id: 'workshop_purify_starlight',
+    inputs: [{ type: PetalType.STARLIGHT, count: 4 }],
+    output: { type: PetalType.DEW, count: 2 },
+    processingType: ProcessingType.PURIFYING,
+    processingTime: 4000,
+    batchMax: 4,
+    successRate: 0.85,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.STARLIGHT, count: 8 }],
+    upgradeSuccessRateBonus: 0.05,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.STARLIGHT, count: 3 }],
+    description: '净化星光花瓣，凝结出清澈的露珠花瓣'
+  },
+  {
+    id: 'workshop_enhance_dew',
+    inputs: [{ type: PetalType.DEW, count: 3 }],
+    output: { type: PetalType.GLOWING, count: 2 },
+    processingType: ProcessingType.ENHANCING,
+    processingTime: 5000,
+    batchMax: 3,
+    successRate: 0.8,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.DEW, count: 6 }],
+    upgradeSuccessRateBonus: 0.06,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.DEW, count: 2 }],
+    description: '强化露珠花瓣，激发其内在荧光'
+  },
+  {
+    id: 'workshop_refine_glowing',
+    inputs: [{ type: PetalType.GLOWING, count: 3 }],
+    output: { type: PetalType.DREAM, count: 2 },
+    processingType: ProcessingType.REFINING,
+    processingTime: 6000,
+    batchMax: 3,
+    successRate: 0.75,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.GLOWING, count: 6 }],
+    upgradeSuccessRateBonus: 0.06,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.GLOWING, count: 2 }],
+    description: '精炼荧光花瓣，提炼出梦幻般的梦境花瓣'
+  },
+  {
+    id: 'workshop_purify_dream',
+    inputs: [{ type: PetalType.DREAM, count: 3 }, { type: PetalType.STARLIGHT, count: 2 }],
+    output: { type: PetalType.ETERNAL, count: 2 },
+    processingType: ProcessingType.PURIFYING,
+    processingTime: 8000,
+    batchMax: 2,
+    successRate: 0.7,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.DREAM, count: 5 }],
+    upgradeSuccessRateBonus: 0.07,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.DREAM, count: 2 }],
+    description: '净化梦境花瓣与星光的融合物，凝聚永恒之力'
+  },
+  {
+    id: 'workshop_enhance_eternal',
+    inputs: [{ type: PetalType.ETERNAL, count: 2 }, { type: PetalType.DREAM, count: 3 }, { type: PetalType.GLOWING, count: 4 }],
+    output: { type: PetalType.WAKEUP, count: 1 },
+    processingType: ProcessingType.ENHANCING,
+    processingTime: 12000,
+    batchMax: 1,
+    successRate: 0.6,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.ETERNAL, count: 3 }],
+    upgradeSuccessRateBonus: 0.08,
+    upgradeOutputBonus: 0,
+    unlockCondition: [{ type: PetalType.ETERNAL, count: 1 }],
+    description: '终极强化工艺，融合永恒、梦境与荧光，尝试唤醒沉睡之花'
+  },
+  {
+    id: 'workshop_refine_mutation_shimmer',
+    inputs: [{ type: PetalType.MOONLIGHT_SHIMMER, count: 2 }],
+    output: { type: PetalType.STARLIGHT_BURST, count: 1 },
+    processingType: ProcessingType.REFINING,
+    processingTime: 5000,
+    batchMax: 3,
+    successRate: 0.85,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.MOONLIGHT_SHIMMER, count: 4 }],
+    upgradeSuccessRateBonus: 0.05,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.MOONLIGHT_SHIMMER, count: 1 }],
+    description: '精炼月华花瓣的变异能量，转化为璀璨的星爆花瓣'
+  },
+  {
+    id: 'workshop_purify_mutation_burst',
+    inputs: [{ type: PetalType.STARLIGHT_BURST, count: 2 }],
+    output: { type: PetalType.DEW_CRYSTAL, count: 1 },
+    processingType: ProcessingType.PURIFYING,
+    processingTime: 6000,
+    batchMax: 2,
+    successRate: 0.8,
+    upgradeLevel: 1,
+    upgradeCost: [{ type: PetalType.STARLIGHT_BURST, count: 4 }],
+    upgradeSuccessRateBonus: 0.06,
+    upgradeOutputBonus: 1,
+    unlockCondition: [{ type: PetalType.STARLIGHT_BURST, count: 1 }],
+    description: '净化星爆花瓣的爆裂能量，结晶为晶露花瓣'
+  }
+];
+
+export const WORKSHOP_MAX_RECORDS = 30;
+export const WORKSHOP_MAX_ACTIVE_JOBS = 3;
+
+export const INITIAL_WORKSHOP_STATE: WorkshopState = {
+  recipeStates: WORKSHOP_RECIPES.map(recipe => ({
+    recipeId: recipe.id,
+    isUnlocked: recipe.unlockCondition.length === 0,
+    currentLevel: 1,
+    totalProduced: 0,
+    totalBatchRuns: 0,
+    lastProducedAt: 0
+  })),
+  activeJobs: [],
+  productionStats: {
+    totalProcessed: 0,
+    totalOutput: 0,
+    totalBatchOperations: 0,
+    totalUpgrades: 0,
+    averageOutputPerRun: 0,
+    recipesByProcessingType: {
+      [ProcessingType.REFINING]: 0,
+      [ProcessingType.PURIFYING]: 0,
+      [ProcessingType.ENHANCING]: 0
+    },
+    peakBatchSize: 0,
+    totalProcessingTime: 0
+  },
+  productionRecords: []
+};
+
 export const INITIAL_GAME_STATE: GameState = {
   playerX: WORLD_WIDTH / 2,
   playerY: WORLD_HEIGHT / 2,
@@ -2304,7 +2462,8 @@ export const INITIAL_GAME_STATE: GameState = {
   visitorSystem: JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE)),
   regionUnlockStates: getInitialRegionUnlockStates(),
   currentRegionId: getDefaultCurrentRegionId(),
-  lastRegionId: null
+  lastRegionId: null,
+  workshopState: JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE))
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -2328,7 +2487,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.3.1';
+export const SAVE_VERSION = '5.4.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
