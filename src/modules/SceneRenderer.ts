@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
-import { WORLD_WIDTH, WORLD_HEIGHT, GAME_WIDTH, GAME_HEIGHT } from '../config/GameConfig';
+import { WORLD_WIDTH, WORLD_HEIGHT, GAME_WIDTH, GAME_HEIGHT, SKY_COLORS } from '../config/GameConfig';
+import { SaveManager } from '../managers/SaveManager';
+import { EventManager } from '../managers/EventManager';
+import { TimeOfDay, WeatherType } from '../types';
 
 export class SceneRenderer {
   private scene: Phaser.Scene;
@@ -7,6 +10,11 @@ export class SceneRenderer {
   private fireflyParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private starParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private lightBeams: Phaser.GameObjects.Graphics[] = [];
+  private ambientLightOverlay: Phaser.GameObjects.Graphics | null = null;
+  private skyColorTween: Phaser.Tweens.Tween | null = null;
+  private eventListeners: Array<{ event: string; callback: (data: any) => void }> = [];
+  private currentSkyColor: number = 0x0a0514;
+  private targetSkyColor: number = 0x0a0514;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -18,6 +26,57 @@ export class SceneRenderer {
     this.createFireflies();
     this.createLightBeams();
     this.createForestSilhouette();
+    this.createAmbientLightOverlay();
+    this.setupEventListeners();
+    this.updateInitialEnvironment();
+  }
+
+  private setupEventListeners(): void {
+    const onTimeChanged = (data: any) => {
+      this.updateSkyColor(data.timeOfDay);
+      this.updateAmbientLight();
+      this.updateParticleEffects(data.timeOfDay);
+    };
+
+    const onWeatherChanged = (data: any) => {
+      this.updateSkyColorForWeather(data.newWeather);
+      this.updateAmbientLight();
+      this.updateParticleEffectsForWeather(data.newWeather, data.intensity);
+    };
+
+    const onEnvironmentUpdated = (data: any) => {
+      this.updateAmbientLight();
+    };
+
+    EventManager.getInstance().on('time:changed', onTimeChanged);
+    EventManager.getInstance().on('weather:changed', onWeatherChanged);
+    EventManager.getInstance().on('environment:updated', onEnvironmentUpdated);
+
+    this.eventListeners.push({ event: 'time:changed', callback: onTimeChanged });
+    this.eventListeners.push({ event: 'weather:changed', callback: onWeatherChanged });
+    this.eventListeners.push({ event: 'environment:updated', callback: onEnvironmentUpdated });
+  }
+
+  private updateInitialEnvironment(): void {
+    const state = SaveManager.getInstance().getGameState();
+    if (state.environment) {
+      this.currentSkyColor = state.environment.skyColor;
+      this.targetSkyColor = state.environment.skyColor;
+      this.updateAmbientLight();
+      this.updateParticleEffects(state.environment.time.timeOfDay);
+      this.updateParticleEffectsForWeather(
+        state.environment.weather.currentWeather,
+        state.environment.weather.weatherIntensity
+      );
+    }
+  }
+
+  private createAmbientLightOverlay(): void {
+    this.ambientLightOverlay = this.scene.add.graphics();
+    this.ambientLightOverlay.fillStyle(0x000000, 0.5);
+    this.ambientLightOverlay.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    this.ambientLightOverlay.setDepth(-9);
+    this.ambientLightOverlay.setScrollFactor(0);
   }
 
   private createBackground(): void {
@@ -38,7 +97,8 @@ export class SceneRenderer {
     const bg = this.scene.add.image(0, 0, 'bg_gradient')
       .setOrigin(0, 0)
       .setScrollFactor(0)
-      .setDepth(-10);
+      .setDepth(-10)
+      .setName('bg_gradient');
 
     const fogGradient = this.scene.textures.createCanvas('fog_gradient', WORLD_WIDTH, WORLD_HEIGHT);
     const fogCtx = fogGradient.getContext();
@@ -209,6 +269,124 @@ export class SceneRenderer {
     ctx.fill();
   }
 
+  private updateSkyColor(timeOfDay: TimeOfDay): void {
+    const state = SaveManager.getInstance().getGameState();
+    const weather = state.environment?.weather.currentWeather || WeatherType.CLEAR;
+    
+    const skyColors = SKY_COLORS[timeOfDay];
+    if (skyColors && skyColors[weather]) {
+      this.targetSkyColor = skyColors[weather].top;
+      this.tweenSkyColor();
+    }
+  }
+
+  private updateSkyColorForWeather(weather: WeatherType): void {
+    const state = SaveManager.getInstance().getGameState();
+    const timeOfDay = state.environment?.time.timeOfDay || TimeOfDay.NIGHT;
+    
+    const skyColors = SKY_COLORS[timeOfDay];
+    if (skyColors && skyColors[weather]) {
+      this.targetSkyColor = skyColors[weather].top;
+      this.tweenSkyColor();
+    }
+  }
+
+  private tweenSkyColor(): void {
+    if (this.skyColorTween) {
+      this.skyColorTween.stop();
+    }
+
+    const colorObj = { r: (this.currentSkyColor >> 16) & 255, g: (this.currentSkyColor >> 8) & 255, b: this.currentSkyColor & 255 };
+    const targetR = (this.targetSkyColor >> 16) & 255;
+    const targetG = (this.targetSkyColor >> 8) & 255;
+    const targetB = this.targetSkyColor & 255;
+
+    this.skyColorTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 3000,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue();
+        const r = Math.floor(colorObj.r + (targetR - colorObj.r) * t);
+        const g = Math.floor(colorObj.g + (targetG - colorObj.g) * t);
+        const b = Math.floor(colorObj.b + (targetB - colorObj.b) * t);
+        this.currentSkyColor = (r << 16) | (g << 8) | b;
+        this.updateBackgroundTint();
+      }
+    });
+  }
+
+  private updateBackgroundTint(): void {
+    const bgImage = this.scene.children.getByName('bg_gradient') as Phaser.GameObjects.Image;
+    if (bgImage) {
+      bgImage.setTint(this.currentSkyColor);
+    }
+  }
+
+  private updateAmbientLight(): void {
+    const state = SaveManager.getInstance().getGameState();
+    if (!state.environment || !this.ambientLightOverlay) return;
+
+    const ambientLight = state.environment.ambientLight;
+    const darkness = 1 - ambientLight;
+    
+    this.ambientLightOverlay.clear();
+    this.ambientLightOverlay.fillStyle(0x000000, darkness * 0.7);
+    this.ambientLightOverlay.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+  }
+
+  private updateParticleEffects(timeOfDay: TimeOfDay): void {
+    if (this.fireflyParticles) {
+      if (timeOfDay === TimeOfDay.NIGHT || timeOfDay === TimeOfDay.MIDNIGHT || timeOfDay === TimeOfDay.DUSK) {
+        this.fireflyParticles.setVisible(true);
+        this.fireflyParticles.setActive(true);
+        const intensity = timeOfDay === TimeOfDay.MIDNIGHT ? 1.5 : timeOfDay === TimeOfDay.NIGHT ? 1.0 : 0.5;
+        this.fireflyParticles.setQuantity(Math.floor(2 * intensity));
+      } else {
+        this.fireflyParticles.setVisible(false);
+        this.fireflyParticles.setActive(false);
+      }
+    }
+
+    if (this.starParticles) {
+      if (timeOfDay === TimeOfDay.NIGHT || timeOfDay === TimeOfDay.MIDNIGHT) {
+        this.starParticles.setVisible(true);
+        this.starParticles.setActive(true);
+      } else {
+        this.starParticles.setVisible(false);
+        this.starParticles.setActive(false);
+      }
+    }
+
+    this.lightBeams.forEach(beam => {
+      if (timeOfDay === TimeOfDay.DAY || timeOfDay === TimeOfDay.DAWN) {
+        beam.setVisible(true);
+        beam.setAlpha(timeOfDay === TimeOfDay.DAY ? 0.15 : 0.1);
+      } else {
+        beam.setVisible(false);
+      }
+    });
+  }
+
+  private updateParticleEffectsForWeather(weather: WeatherType, intensity: number): void {
+    if (this.fireflyParticles && this.fireflyParticles.visible) {
+      if (weather === WeatherType.RAIN || weather === WeatherType.HEAVY_RAIN || weather === WeatherType.STORM) {
+        this.fireflyParticles.setVisible(false);
+      }
+    }
+
+    if (this.starParticles && this.starParticles.visible) {
+      if (weather === WeatherType.CLOUDY || weather === WeatherType.RAIN || 
+          weather === WeatherType.HEAVY_RAIN || weather === WeatherType.STORM ||
+          weather === WeatherType.FOG || weather === WeatherType.SNOW) {
+        this.starParticles.setAlpha(0.3 * intensity);
+      } else {
+        this.starParticles.setAlpha(1);
+      }
+    }
+  }
+
   public update(time: number, delta: number): void {
     this.lightBeams.forEach((beam, index) => {
       const sway = Math.sin(time * 0.0003 + index) * 0.02;
@@ -217,6 +395,15 @@ export class SceneRenderer {
   }
 
   public destroy(): void {
+    this.eventListeners.forEach(listener => {
+      EventManager.getInstance().off(listener.event as keyof import('../types').GameEvents, listener.callback);
+    });
+    this.eventListeners = [];
+
+    if (this.skyColorTween) {
+      this.skyColorTween.stop();
+    }
+
     if (this.fireflyParticles) {
       this.fireflyParticles.stop();
       this.fireflyParticles.destroy();
@@ -224,6 +411,9 @@ export class SceneRenderer {
     if (this.starParticles) {
       this.starParticles.stop();
       this.starParticles.destroy();
+    }
+    if (this.ambientLightOverlay) {
+      this.ambientLightOverlay.destroy();
     }
   }
 }

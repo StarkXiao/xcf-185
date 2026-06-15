@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { EventManager } from './EventManager';
 import { SaveManager } from './SaveManager';
-import { AudioContextType, AudioContextPreferences } from '../types';
-import { AUDIO_CONTEXT_CONFIG } from '../config/GameConfig';
+import { AudioContextType, AudioContextPreferences, TimeOfDay, WeatherType } from '../types';
+import { AUDIO_CONTEXT_CONFIG, AUDIO_CONTEXT_CONFIG_EXTENDED } from '../config/GameConfig';
 
 export class AudioManager {
   private static instance: AudioManager;
@@ -26,6 +26,14 @@ export class AudioManager {
       }
     });
 
+    EventManager.getInstance().on('time:changed', (data: any) => {
+      this.updateBgmForEnvironment(data.timeOfDay, null);
+    });
+
+    EventManager.getInstance().on('weather:changed', (data: any) => {
+      this.updateBgmForEnvironment(null, data.newWeather);
+    });
+
     this.loadContextPreferences();
   }
 
@@ -40,13 +48,39 @@ export class AudioManager {
     this.scene = scene;
   }
 
+  private updateBgmForEnvironment(timeOfDay: TimeOfDay | null, weather: WeatherType | null): void {
+    if (!this.currentContext || this.currentContext !== AudioContextType.EXPLORE) return;
+    
+    const config = AUDIO_CONTEXT_CONFIG_EXTENDED[this.currentContext];
+    if (!config) return;
+
+    let bgmKey = config.bgmKey;
+    
+    const state = SaveManager.getInstance().getGameState();
+    const env = state.environment;
+    
+    const currentTime = timeOfDay || env?.time.timeOfDay;
+    const currentWeather = weather || env?.weather.currentWeather;
+    
+    if (config.weatherVariations && currentWeather && config.weatherVariations[currentWeather]) {
+      bgmKey = config.weatherVariations[currentWeather]!;
+    } else if (config.timeVariations && currentTime && config.timeVariations[currentTime]) {
+      bgmKey = config.timeVariations[currentTime]!;
+    }
+    
+    if (this.bgmSound && bgmKey !== config.bgmKey) {
+      const prefs = this.getEffectivePreferences(this.currentContext);
+      this.crossFadeTo(bgmKey, prefs.volume, config.crossFadeDuration);
+    }
+  }
+
   public switchContext(context: AudioContextType, force: boolean = false): void {
     if (this.currentContext === context && !force) return;
 
     const previousContext = this.currentContext;
     this.currentContext = context;
 
-    const config = AUDIO_CONTEXT_CONFIG[context];
+    const config = AUDIO_CONTEXT_CONFIG_EXTENDED[context] || AUDIO_CONTEXT_CONFIG[context];
     if (!config) return;
 
     const prefs = this.getEffectivePreferences(context);
@@ -70,7 +104,29 @@ export class AudioManager {
       return;
     }
 
-    this.crossFadeTo(config.bgmKey, prefs.volume, config.crossFadeDuration);
+    let bgmKey = config.bgmKey;
+    
+    if (context === AudioContextType.EXPLORE) {
+      const extendedConfig = AUDIO_CONTEXT_CONFIG_EXTENDED[context];
+      const state = SaveManager.getInstance().getGameState();
+      const env = state.environment;
+      
+      if (extendedConfig && extendedConfig.weatherVariations && env?.weather.currentWeather) {
+        const weatherBgm = extendedConfig.weatherVariations[env.weather.currentWeather];
+        if (weatherBgm) {
+          bgmKey = weatherBgm;
+        }
+      }
+      
+      if (bgmKey === config.bgmKey && extendedConfig && extendedConfig.timeVariations && env?.time.timeOfDay) {
+        const timeBgm = extendedConfig.timeVariations[env.time.timeOfDay];
+        if (timeBgm) {
+          bgmKey = timeBgm;
+        }
+      }
+    }
+
+    this.crossFadeTo(bgmKey, prefs.volume, config.crossFadeDuration);
 
     EventManager.getInstance().emit('audio:context_changed', {
       context,
@@ -227,7 +283,8 @@ export class AudioManager {
 
   public setContextVolume(context: AudioContextType, volume: number): void {
     const clampedVolume = Math.max(0, Math.min(1, volume));
-    const prefs = this.contextPreferences[context] || { volume: AUDIO_CONTEXT_CONFIG[context].defaultVolume, enabled: true };
+    const config = AUDIO_CONTEXT_CONFIG_EXTENDED[context] || AUDIO_CONTEXT_CONFIG[context];
+    const prefs = this.contextPreferences[context] || { volume: config.defaultVolume, enabled: true };
     this.contextPreferences[context] = { ...prefs, volume: clampedVolume };
     this.saveContextPreferences();
 
@@ -242,7 +299,8 @@ export class AudioManager {
   }
 
   public setContextEnabled(context: AudioContextType, enabled: boolean): void {
-    const prefs = this.contextPreferences[context] || { volume: AUDIO_CONTEXT_CONFIG[context].defaultVolume, enabled: true };
+    const config = AUDIO_CONTEXT_CONFIG_EXTENDED[context] || AUDIO_CONTEXT_CONFIG[context];
+    const prefs = this.contextPreferences[context] || { volume: config.defaultVolume, enabled: true };
     this.contextPreferences[context] = { ...prefs, enabled };
     this.saveContextPreferences();
 
@@ -266,7 +324,7 @@ export class AudioManager {
 
   private getEffectivePreferences(context: AudioContextType): AudioContextPreferences {
     const saved = this.contextPreferences[context];
-    const config = AUDIO_CONTEXT_CONFIG[context];
+    const config = AUDIO_CONTEXT_CONFIG_EXTENDED[context] || AUDIO_CONTEXT_CONFIG[context];
     if (saved) {
       return saved;
     }

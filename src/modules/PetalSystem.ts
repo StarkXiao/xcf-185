@@ -9,7 +9,10 @@ import {
   REGIONS,
   HEAT_CONFIG,
   DECAY_CONFIG,
-  BALANCE_CONFIG
+  BALANCE_CONFIG,
+  TIME_EFFECTS,
+  WEATHER_EFFECTS,
+  SEASON_EFFECTS
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -274,6 +277,8 @@ export class PetalSystem {
     const adjustments: SpawnAdjustment[] = [];
     const spawnableTypes = Object.values(PetalType).filter(type => PETAL_CONFIGS[type].spawnWeight > 0);
 
+    const env = state.environment;
+
     spawnableTypes.forEach(type => {
       const config = PETAL_CONFIGS[type];
       let heatMultiplier = 1;
@@ -297,15 +302,39 @@ export class PetalSystem {
 
       const balanceMultiplier = this.getBalanceMultiplier(type);
       
+      let timeMultiplier = 1;
+      let weatherMultiplier = 1;
+      let seasonMultiplier = 1;
+      
+      if (env) {
+        const timeEffect = TIME_EFFECTS[env.time.timeOfDay];
+        if (timeEffect && timeEffect.spawnWeightModifier[type]) {
+          timeMultiplier = timeEffect.spawnWeightModifier[type]!;
+        }
+        
+        const weatherEffect = WEATHER_EFFECTS[env.weather.currentWeather];
+        if (weatherEffect && weatherEffect.spawnWeightModifier[type]) {
+          weatherMultiplier = weatherEffect.spawnWeightModifier[type]!;
+        }
+        
+        const seasonEffect = SEASON_EFFECTS[env.time.season];
+        if (seasonEffect && seasonEffect.spawnWeightModifier[type]) {
+          seasonMultiplier = seasonEffect.spawnWeightModifier[type]!;
+        }
+      }
+      
       const finalWeight = Math.max(
         BALANCE_CONFIG.minSpawnWeight,
-        config.spawnWeight * heatMultiplier * decayMultiplier * balanceMultiplier
+        config.spawnWeight * heatMultiplier * decayMultiplier * balanceMultiplier * timeMultiplier * weatherMultiplier * seasonMultiplier
       );
 
       adjustments.push({
         type,
         heatMultiplier,
         decayMultiplier,
+        timeMultiplier,
+        weatherMultiplier,
+        seasonMultiplier,
         finalWeight
       });
     });

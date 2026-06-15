@@ -22,7 +22,15 @@ import {
   DailyRewardState,
   TutorialConditionType,
   TutorialValidationType,
-  TutorialGuideProgress
+  TutorialGuideProgress,
+  TimeOfDay,
+  WeatherType,
+  SeasonType,
+  TimeEffect,
+  WeatherEffect,
+  EnvironmentState,
+  EnvironmentStats,
+  RareDropEvent
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -1378,6 +1386,180 @@ export const DEFAULT_QUICK_ENTRIES: QuickEntry[] = [
   }
 ];
 
+export const RARE_DROP_EVENTS: Omit<RareDropEvent, 'lastTriggered' | 'count'>[] = [
+  {
+    id: 'midnight_eternal',
+    type: PetalType.ETERNAL,
+    rarity: 'epic',
+    trigger: 'time',
+    triggerCondition: '午夜时分随机出现',
+    probability: 0.08,
+    cooldown: 60000,
+    maxCount: 3,
+    announcement: '✨ 午夜降临，永恒花瓣悄然绽放！'
+  },
+  {
+    id: 'aurora_dream_phantom',
+    type: PetalType.DREAM_PHANTOM,
+    rarity: 'legendary',
+    trigger: 'weather',
+    triggerCondition: '极光天气时出现',
+    probability: 0.15,
+    cooldown: 45000,
+    maxCount: 2,
+    announcement: '🌌 极光中，幻梦花瓣显现！'
+  },
+  {
+    id: 'meteor_starburst',
+    type: PetalType.STARLIGHT_BURST,
+    rarity: 'epic',
+    trigger: 'weather',
+    triggerCondition: '流星雨时坠落',
+    probability: 0.2,
+    cooldown: 30000,
+    maxCount: 5,
+    announcement: '☄️ 流星划过，星爆花瓣从天而降！'
+  },
+  {
+    id: 'fullmoon_shimmer',
+    type: PetalType.MOONLIGHT_SHIMMER,
+    rarity: 'rare',
+    trigger: 'time',
+    triggerCondition: '满月之夜出现',
+    probability: 0.25,
+    cooldown: 40000,
+    maxCount: 8,
+    announcement: '🌕 满月当空，月华花瓣洒落！'
+  },
+  {
+    id: 'storm_ember',
+    type: PetalType.GLOWING_EMBER,
+    rarity: 'rare',
+    trigger: 'weather',
+    triggerCondition: '暴风雨中出现',
+    probability: 0.18,
+    cooldown: 35000,
+    maxCount: 6,
+    announcement: '⚡ 雷暴中，烬荧花瓣闪烁！'
+  },
+  {
+    id: 'snow_crystal',
+    type: PetalType.DEW_CRYSTAL,
+    rarity: 'rare',
+    trigger: 'weather',
+    triggerCondition: '下雪天结晶',
+    probability: 0.22,
+    cooldown: 35000,
+    maxCount: 7,
+    announcement: '❄️ 雪花凝结，晶露花瓣诞生！'
+  },
+  {
+    id: 'fog_phantom',
+    type: PetalType.DREAM_PHANTOM,
+    rarity: 'legendary',
+    trigger: 'weather',
+    triggerCondition: '大雾中隐约出现',
+    probability: 0.1,
+    cooldown: 50000,
+    maxCount: 2,
+    announcement: '🌫️ 迷雾深处，幻梦花瓣若隐若现！'
+  },
+  {
+    id: 'dawn_wakeup',
+    type: PetalType.WAKEUP,
+    rarity: 'legendary',
+    trigger: 'time',
+    triggerCondition: '黎明时分极低概率出现',
+    probability: 0.01,
+    cooldown: 300000,
+    maxCount: 1,
+    announcement: '🌸 奇迹！唤醒之花在黎明中绽放！'
+  },
+  {
+    id: 'winter_eternal',
+    type: PetalType.ETERNAL,
+    rarity: 'epic',
+    trigger: 'season',
+    triggerCondition: '冬季稀有出现',
+    probability: 0.12,
+    cooldown: 80000,
+    maxCount: 4,
+    announcement: '❄️ 寒冬之中，永恒花瓣傲然绽放！'
+  },
+  {
+    id: 'autumn_dream',
+    type: PetalType.DREAM,
+    rarity: 'rare',
+    trigger: 'season',
+    triggerCondition: '秋季常见',
+    probability: 0.15,
+    cooldown: 25000,
+    maxCount: 10,
+    announcement: '🍂 秋风起，梦境花瓣飘舞！'
+  },
+  {
+    id: 'milestone_100_wakeup',
+    type: PetalType.WAKEUP,
+    rarity: 'legendary',
+    trigger: 'milestone',
+    triggerCondition: '收集100朵花瓣后概率出现',
+    probability: 0.05,
+    cooldown: 120000,
+    maxCount: 1,
+    announcement: '🎉 收集达成里程碑！唤醒之花作为奖励出现！'
+  },
+  {
+    id: 'random_legendary',
+    type: PetalType.WAKEUP,
+    rarity: 'legendary',
+    trigger: 'random',
+    triggerCondition: '极低概率随机出现',
+    probability: 0.005,
+    cooldown: 600000,
+    maxCount: 1,
+    announcement: '🌟 传说中的奇迹！唤醒之花神秘出现！'
+  }
+];
+
+export const INITIAL_ENVIRONMENT: EnvironmentState = {
+  time: {
+    gameTime: 0,
+    dayCount: 1,
+    timeOfDay: TimeOfDay.NIGHT,
+    timeProgress: 0.9,
+    season: SeasonType.SPRING,
+    dayStartTime: 0,
+    isFullMoon: false,
+    isMeteorShower: false,
+    moonPhase: 0
+  },
+  weather: {
+    currentWeather: WeatherType.CLEAR,
+    weatherDuration: 30000,
+    weatherIntensity: 0.5,
+    nextWeatherChange: 30000,
+    weatherTransition: 0,
+    targetWeather: WeatherType.CLEAR
+  },
+  ambientLight: 0.3,
+  skyColor: 0x0a0514,
+  fogDensity: 0.1,
+  windSpeed: 0,
+  temperature: 20
+};
+
+export const INITIAL_ENVIRONMENT_STATS: EnvironmentStats = {
+  totalDaysPlayed: 0,
+  nightsPlayed: 0,
+  weatherExperience: Object.values(WeatherType).reduce((acc, type) => {
+    acc[type] = 0;
+    return acc;
+  }, {} as Record<WeatherType, number>),
+  rareDropsFound: [],
+  specialEventsWitnessed: [],
+  totalRareDrops: 0
+};
+
 export const INITIAL_GAME_STATE: GameState = {
   playerX: WORLD_WIDTH / 2,
   playerY: WORLD_HEIGHT / 2,
@@ -1428,7 +1610,14 @@ export const INITIAL_GAME_STATE: GameState = {
     collectCount: 0
   })),
   consecutiveCollect: null,
-  dailyRewardState: JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE))
+  dailyRewardState: JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE)),
+  environment: JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT)),
+  environmentStats: JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT_STATS)),
+  rareDropEvents: RARE_DROP_EVENTS.map(event => ({
+    ...event,
+    lastTriggered: 0,
+    count: 0
+  }))
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -1452,7 +1641,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '4.1.0';
+export const SAVE_VERSION = '5.0.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
@@ -1585,6 +1774,15 @@ export const INHERITANCE_OPTIONS: Omit<InheritanceOption, 'selected'>[] = [
     cost: 1,
     costType: 'points',
     maxSelectable: 1
+  },
+  {
+    id: InheritanceType.ENVIRONMENT_STATS,
+    name: '环境探索',
+    description: '继承天气与环境探索统计',
+    icon: '🌍',
+    cost: 2,
+    costType: 'points',
+    maxSelectable: 1
   }
 ];
 
@@ -1628,3 +1826,431 @@ export const AUDIO_CONTEXT_CONFIG: Record<AudioContextType, {
 };
 
 export const AUDIO_CONTEXT_PREFERENCE_KEY = 'dream_forest_audio_context_prefs';
+
+export const TIME_CONFIG = {
+  DAY_DURATION: 120000,
+  DAWN_START: 0,
+  DAY_START: 0.15,
+  DUSK_START: 0.7,
+  NIGHT_START: 0.85,
+  MIDNIGHT_START: 0.95,
+  SEASON_DURATION: 4,
+  FULL_MOON_INTERVAL: 7,
+  METEOR_SHOWER_CHANCE: 0.1,
+  TIME_SPEED_MULTIPLIER: 1
+};
+
+export const TIME_EFFECTS: Record<TimeOfDay, TimeEffect> = {
+  [TimeOfDay.DAWN]: {
+    timeOfDay: TimeOfDay.DAWN,
+    spawnWeightModifier: {
+      [PetalType.DEW]: 2.5,
+      [PetalType.MOONLIGHT]: 0.8,
+      [PetalType.STARLIGHT]: 0.6,
+      [PetalType.GLOWING]: 1.2
+    },
+    rareDropBoost: 1.2,
+    lightLevel: 0.6,
+    description: '黎明时分，晨露凝结，露珠花瓣大量出现'
+  },
+  [TimeOfDay.DAY]: {
+    timeOfDay: TimeOfDay.DAY,
+    spawnWeightModifier: {
+      [PetalType.MOONLIGHT]: 0.5,
+      [PetalType.STARLIGHT]: 0.3,
+      [PetalType.DREAM]: 0.4,
+      [PetalType.DEW]: 1.5,
+      [PetalType.GLOWING]: 0.8
+    },
+    rareDropBoost: 0.8,
+    lightLevel: 1.0,
+    description: '阳光明媚，普通花瓣活跃，但月光花瓣稀少'
+  },
+  [TimeOfDay.DUSK]: {
+    timeOfDay: TimeOfDay.DUSK,
+    spawnWeightModifier: {
+      [PetalType.GLOWING]: 2.0,
+      [PetalType.DREAM]: 1.5,
+      [PetalType.MOONLIGHT]: 1.5,
+      [PetalType.STARLIGHT]: 1.8
+    },
+    rareDropBoost: 1.5,
+    lightLevel: 0.5,
+    description: '黄昏降临，荧光花瓣开始苏醒，稀有掉落概率提升'
+  },
+  [TimeOfDay.NIGHT]: {
+    timeOfDay: TimeOfDay.NIGHT,
+    spawnWeightModifier: {
+      [PetalType.MOONLIGHT]: 2.0,
+      [PetalType.STARLIGHT]: 2.5,
+      [PetalType.DREAM]: 1.8,
+      [PetalType.ETERNAL]: 1.5,
+      [PetalType.DEW]: 0.5,
+      [PetalType.GLOWING]: 1.5
+    },
+    rareDropBoost: 2.0,
+    lightLevel: 0.3,
+    description: '夜幕降临，月光与星光花瓣绽放，稀有掉落概率大幅提升'
+  },
+  [TimeOfDay.MIDNIGHT]: {
+    timeOfDay: TimeOfDay.MIDNIGHT,
+    spawnWeightModifier: {
+      [PetalType.MOONLIGHT_SHIMMER]: 3.0,
+      [PetalType.STARLIGHT_BURST]: 3.0,
+      [PetalType.DREAM_PHANTOM]: 2.5,
+      [PetalType.ETERNAL]: 2.0,
+      [PetalType.DREAM]: 2.0,
+      [PetalType.WAKEUP]: 1.5
+    },
+    rareDropBoost: 3.0,
+    lightLevel: 0.15,
+    description: '午夜时分，传说中的变异花瓣可能出现！稀有掉落概率最高'
+  }
+};
+
+export const SEASON_EFFECTS: Record<SeasonType, {
+  spawnWeightModifier: Partial<Record<PetalType, number>>;
+  rareDropBoost: number;
+  weatherWeights: Partial<Record<WeatherType, number>>;
+  description: string;
+  color: number;
+}> = {
+  [SeasonType.SPRING]: {
+    spawnWeightModifier: {
+      [PetalType.DEW]: 1.8,
+      [PetalType.MOONLIGHT]: 1.2,
+      [PetalType.DEW_CRYSTAL]: 1.5
+    },
+    rareDropBoost: 1.1,
+    weatherWeights: {
+      [WeatherType.CLEAR]: 3,
+      [WeatherType.CLOUDY]: 2,
+      [WeatherType.RAIN]: 2,
+      [WeatherType.FOG]: 1
+    },
+    description: '春暖花开，露珠花瓣更加常见',
+    color: 0xa8e6cf
+  },
+  [SeasonType.SUMMER]: {
+    spawnWeightModifier: {
+      [PetalType.GLOWING]: 1.8,
+      [PetalType.STARLIGHT]: 1.5,
+      [PetalType.STARLIGHT_BURST]: 1.3,
+      [PetalType.GLOWING_EMBER]: 1.5
+    },
+    rareDropBoost: 1.3,
+    weatherWeights: {
+      [WeatherType.CLEAR]: 4,
+      [WeatherType.STORM]: 1,
+      [WeatherType.HEAVY_RAIN]: 1,
+      [WeatherType.METEOR]: 0.5
+    },
+    description: '夏日炎炎，荧光与星光花瓣闪耀，偶有流星雨',
+    color: 0xffe66d
+  },
+  [SeasonType.AUTUMN]: {
+    spawnWeightModifier: {
+      [PetalType.DREAM]: 1.8,
+      [PetalType.MOONLIGHT]: 1.5,
+      [PetalType.DREAM_PHANTOM]: 1.3,
+      [PetalType.MOONLIGHT_SHIMMER]: 1.5
+    },
+    rareDropBoost: 1.5,
+    weatherWeights: {
+      [WeatherType.CLEAR]: 2,
+      [WeatherType.CLOUDY]: 3,
+      [WeatherType.FOG]: 2,
+      [WeatherType.WINDY]: 2,
+      [WeatherType.AURORA]: 0.5
+    },
+    description: '秋意浓浓，梦境花瓣飘舞，极光偶现',
+    color: 0xff9966
+  },
+  [SeasonType.WINTER]: {
+    spawnWeightModifier: {
+      [PetalType.ETERNAL]: 1.8,
+      [PetalType.DREAM]: 1.2,
+      [PetalType.WAKEUP]: 1.3,
+      [PetalType.DEW_CRYSTAL]: 1.8
+    },
+    rareDropBoost: 1.8,
+    weatherWeights: {
+      [WeatherType.SNOW]: 3,
+      [WeatherType.FOG]: 2,
+      [WeatherType.CLEAR]: 2,
+      [WeatherType.AURORA]: 1
+    },
+    description: '寒冬腊月，永恒花瓣绽放，极光与雪舞相伴',
+    color: 0x88ccff
+  }
+};
+
+export const WEATHER_EFFECTS: Record<WeatherType, WeatherEffect> = {
+  [WeatherType.CLEAR]: {
+    type: WeatherType.CLEAR,
+    spawnWeightModifier: {
+      [PetalType.STARLIGHT]: 1.3,
+      [PetalType.GLOWING]: 1.2
+    },
+    rareDropBoost: 1.0,
+    ambientMultiplier: 1.0,
+    description: '晴朗的天空，星光闪耀'
+  },
+  [WeatherType.CLOUDY]: {
+    type: WeatherType.CLOUDY,
+    spawnWeightModifier: {
+      [PetalType.MOONLIGHT]: 1.2,
+      [PetalType.DEW]: 1.1
+    },
+    rareDropBoost: 1.1,
+    ambientMultiplier: 0.8,
+    description: '多云天气，月光柔和'
+  },
+  [WeatherType.RAIN]: {
+    type: WeatherType.RAIN,
+    spawnWeightModifier: {
+      [PetalType.DEW]: 2.0,
+      [PetalType.DEW_CRYSTAL]: 1.5,
+      [PetalType.MOONLIGHT]: 0.7,
+      [PetalType.STARLIGHT]: 0.6
+    },
+    rareDropBoost: 1.3,
+    ambientMultiplier: 0.6,
+    description: '细雨绵绵，露珠花瓣大量涌现'
+  },
+  [WeatherType.HEAVY_RAIN]: {
+    type: WeatherType.HEAVY_RAIN,
+    spawnWeightModifier: {
+      [PetalType.DEW]: 2.5,
+      [PetalType.DEW_CRYSTAL]: 2.0,
+      [PetalType.MOONLIGHT]: 0.4,
+      [PetalType.STARLIGHT]: 0.3,
+      [PetalType.GLOWING]: 0.5
+    },
+    rareDropBoost: 1.5,
+    ambientMultiplier: 0.4,
+    description: '倾盆大雨，晶露花瓣可能出现'
+  },
+  [WeatherType.SNOW]: {
+    type: WeatherType.SNOW,
+    spawnWeightModifier: {
+      [PetalType.DEW_CRYSTAL]: 2.5,
+      [PetalType.ETERNAL]: 1.5,
+      [PetalType.GLOWING_EMBER]: 1.3,
+      [PetalType.DEW]: 0.6
+    },
+    rareDropBoost: 1.6,
+    ambientMultiplier: 0.5,
+    description: '雪花飘落，晶露与永恒花瓣更加常见'
+  },
+  [WeatherType.FOG]: {
+    type: WeatherType.FOG,
+    spawnWeightModifier: {
+      [PetalType.DREAM]: 2.0,
+      [PetalType.DREAM_PHANTOM]: 1.8,
+      [PetalType.GLOWING]: 0.7,
+      [PetalType.STARLIGHT]: 0.5
+    },
+    rareDropBoost: 1.8,
+    ambientMultiplier: 0.3,
+    description: '迷雾笼罩，梦境花瓣若隐若现，稀有掉落提升'
+  },
+  [WeatherType.WINDY]: {
+    type: WeatherType.WINDY,
+    spawnWeightModifier: {
+      [PetalType.STARLIGHT]: 1.5,
+      [PetalType.STARLIGHT_BURST]: 1.3,
+      [PetalType.MOONLIGHT_SHIMMER]: 1.2,
+      [PetalType.DEW]: 0.5
+    },
+    rareDropBoost: 1.2,
+    ambientMultiplier: 0.9,
+    description: '风起云涌，轻盈的花瓣随风飘散'
+  },
+  [WeatherType.STORM]: {
+    type: WeatherType.STORM,
+    spawnWeightModifier: {
+      [PetalType.GLOWING_EMBER]: 2.5,
+      [PetalType.STARLIGHT_BURST]: 2.0,
+      [PetalType.MOONLIGHT]: 0.3,
+      [PetalType.DEW]: 0.3
+    },
+    rareDropBoost: 2.0,
+    ambientMultiplier: 0.3,
+    description: '雷暴交加，烬荧与星爆花瓣可能降临'
+  },
+  [WeatherType.AURORA]: {
+    type: WeatherType.AURORA,
+    spawnWeightModifier: {
+      [PetalType.DREAM_PHANTOM]: 3.0,
+      [PetalType.ETERNAL]: 2.0,
+      [PetalType.DREAM]: 2.0,
+      [PetalType.WAKEUP]: 1.5
+    },
+    rareDropBoost: 2.5,
+    ambientMultiplier: 0.8,
+    specialEvent: true,
+    description: '极光降临！传说级花瓣出现概率大幅提升！'
+  },
+  [WeatherType.METEOR]: {
+    type: WeatherType.METEOR,
+    spawnWeightModifier: {
+      [PetalType.STARLIGHT_BURST]: 3.5,
+      [PetalType.STARLIGHT]: 2.5,
+      [PetalType.ETERNAL]: 1.8,
+      [PetalType.WAKEUP]: 1.5
+    },
+    rareDropBoost: 3.0,
+    ambientMultiplier: 0.9,
+    specialEvent: true,
+    description: '流星雨！星爆花瓣与永恒花瓣可能坠落！'
+  }
+};
+
+export const WEATHER_DURATION = {
+  [WeatherType.CLEAR]: { min: 30000, max: 60000 },
+  [WeatherType.CLOUDY]: { min: 20000, max: 40000 },
+  [WeatherType.RAIN]: { min: 15000, max: 35000 },
+  [WeatherType.HEAVY_RAIN]: { min: 10000, max: 20000 },
+  [WeatherType.SNOW]: { min: 20000, max: 40000 },
+  [WeatherType.FOG]: { min: 15000, max: 30000 },
+  [WeatherType.WINDY]: { min: 15000, max: 30000 },
+  [WeatherType.STORM]: { min: 8000, max: 15000 },
+  [WeatherType.AURORA]: { min: 20000, max: 35000 },
+  [WeatherType.METEOR]: { min: 15000, max: 25000 }
+};
+
+export const SKY_COLORS: Record<TimeOfDay, Record<WeatherType, { top: number; bottom: number; fog: number }>> = {
+  [TimeOfDay.DAWN]: {
+    [WeatherType.CLEAR]: { top: 0xffa07a, bottom: 0xffd700, fog: 0xffccaa },
+    [WeatherType.CLOUDY]: { top: 0x887788, bottom: 0x998899, fog: 0xaaaaaa },
+    [WeatherType.RAIN]: { top: 0x556677, bottom: 0x667788, fog: 0x778899 },
+    [WeatherType.HEAVY_RAIN]: { top: 0x334455, bottom: 0x445566, fog: 0x556677 },
+    [WeatherType.SNOW]: { top: 0xaaddff, bottom: 0xddeeff, fog: 0xccddee },
+    [WeatherType.FOG]: { top: 0x888888, bottom: 0x999999, fog: 0xaaaaaa },
+    [WeatherType.WINDY]: { top: 0x8899aa, bottom: 0xaabbcc, fog: 0x99aabb },
+    [WeatherType.STORM]: { top: 0x223344, bottom: 0x334455, fog: 0x445566 },
+    [WeatherType.AURORA]: { top: 0x1a0a2e, bottom: 0x2a1a4e, fog: 0x3a2a5e },
+    [WeatherType.METEOR]: { top: 0x0a0514, bottom: 0x1a0a2e, fog: 0x2a1a3e }
+  },
+  [TimeOfDay.DAY]: {
+    [WeatherType.CLEAR]: { top: 0x87ceeb, bottom: 0x98fb98, fog: 0xaaddff },
+    [WeatherType.CLOUDY]: { top: 0x8899aa, bottom: 0xaabb99, fog: 0xbbcccc },
+    [WeatherType.RAIN]: { top: 0x556677, bottom: 0x667755, fog: 0x778877 },
+    [WeatherType.HEAVY_RAIN]: { top: 0x334455, bottom: 0x445544, fog: 0x556655 },
+    [WeatherType.SNOW]: { top: 0xbbddee, bottom: 0xddeeff, fog: 0xeef0ff },
+    [WeatherType.FOG]: { top: 0x999999, bottom: 0xaaaaaa, fog: 0xbbbbbb },
+    [WeatherType.WINDY]: { top: 0x7799cc, bottom: 0x99bb77, fog: 0x88aacc },
+    [WeatherType.STORM]: { top: 0x224466, bottom: 0x335544, fog: 0x446677 },
+    [WeatherType.AURORA]: { top: 0x2a1a4e, bottom: 0x3a2a6e, fog: 0x4a3a7e },
+    [WeatherType.METEOR]: { top: 0x1a0a3e, bottom: 0x2a1a5e, fog: 0x3a2a6e }
+  },
+  [TimeOfDay.DUSK]: {
+    [WeatherType.CLEAR]: { top: 0xff6b6b, bottom: 0xffa500, fog: 0xff8866 },
+    [WeatherType.CLOUDY]: { top: 0x775566, bottom: 0x886655, fog: 0x997766 },
+    [WeatherType.RAIN]: { top: 0x445566, bottom: 0x554433, fog: 0x665544 },
+    [WeatherType.HEAVY_RAIN]: { top: 0x223344, bottom: 0x333322, fog: 0x444433 },
+    [WeatherType.SNOW]: { top: 0x99aadd, bottom: 0xbbccdd, fog: 0xccddee },
+    [WeatherType.FOG]: { top: 0x666677, bottom: 0x777766, fog: 0x888877 },
+    [WeatherType.WINDY]: { top: 0x6677aa, bottom: 0x889966, fog: 0x778899 },
+    [WeatherType.STORM]: { top: 0x112233, bottom: 0x223322, fog: 0x334433 },
+    [WeatherType.AURORA]: { top: 0x1a0a2e, bottom: 0x2a1a3e, fog: 0x3a2a4e },
+    [WeatherType.METEOR]: { top: 0x0a0524, bottom: 0x1a0a3e, fog: 0x2a1a4e }
+  },
+  [TimeOfDay.NIGHT]: {
+    [WeatherType.CLEAR]: { top: 0x0a0514, bottom: 0x1a0a2e, fog: 0x0d1a26 },
+    [WeatherType.CLOUDY]: { top: 0x1a1a2e, bottom: 0x2a2a3e, fog: 0x1d2a36 },
+    [WeatherType.RAIN]: { top: 0x0a1520, bottom: 0x1a2530, fog: 0x0d2a36 },
+    [WeatherType.HEAVY_RAIN]: { top: 0x050a15, bottom: 0x151a25, fog: 0x0a1a26 },
+    [WeatherType.SNOW]: { top: 0x1a2a3e, bottom: 0x2a3a4e, fog: 0x1d3a46 },
+    [WeatherType.FOG]: { top: 0x1a1a1a, bottom: 0x2a2a2a, fog: 0x1d2a26 },
+    [WeatherType.WINDY]: { top: 0x0a1020, bottom: 0x1a2030, fog: 0x0d2030 },
+    [WeatherType.STORM]: { top: 0x050515, bottom: 0x151525, fog: 0x0a1020 },
+    [WeatherType.AURORA]: { top: 0x0a0524, bottom: 0x1a1544, fog: 0x0d2a46 },
+    [WeatherType.METEOR]: { top: 0x05020a, bottom: 0x150a2e, fog: 0x0a152e }
+  },
+  [TimeOfDay.MIDNIGHT]: {
+    [WeatherType.CLEAR]: { top: 0x050210, bottom: 0x0a0520, fog: 0x070a18 },
+    [WeatherType.CLOUDY]: { top: 0x0a0a1a, bottom: 0x15152a, fog: 0x0f1a23 },
+    [WeatherType.RAIN]: { top: 0x050a15, bottom: 0x0a1525, fog: 0x071020 },
+    [WeatherType.HEAVY_RAIN]: { top: 0x020510, bottom: 0x050a15, fog: 0x030812 },
+    [WeatherType.SNOW]: { top: 0x0a1525, bottom: 0x152035, fog: 0x0d1a2d },
+    [WeatherType.FOG]: { top: 0x0a0a0a, bottom: 0x151515, fog: 0x0f1a1a },
+    [WeatherType.WINDY]: { top: 0x050815, bottom: 0x0a1025, fog: 0x070c20 },
+    [WeatherType.STORM]: { top: 0x020208, bottom: 0x050515, fog: 0x030510 },
+    [WeatherType.AURORA]: { top: 0x050220, bottom: 0x100840, fog: 0x081530 },
+    [WeatherType.METEOR]: { top: 0x020108, bottom: 0x080415, fog: 0x050818 }
+  }
+};
+
+
+
+export const ENVIRONMENT_INHERITANCE_OPTION: InheritanceOption = {
+  id: InheritanceType.ENVIRONMENT_STATS,
+  name: '环境探索',
+  description: '继承天气与环境探索统计',
+  icon: '🌍',
+  cost: 2,
+  costType: 'points',
+  selected: false,
+  maxSelectable: 1
+};
+
+export const AUDIO_CONTEXT_CONFIG_EXTENDED: Record<AudioContextType, {
+  bgmKey: string;
+  defaultVolume: number;
+  crossFadeDuration: number;
+  weatherVariations?: Partial<Record<WeatherType, string>>;
+  timeVariations?: Partial<Record<TimeOfDay, string>>;
+}> = {
+  [AudioContextType.MENU]: {
+    bgmKey: 'bgm_menu',
+    defaultVolume: 0.5,
+    crossFadeDuration: 800
+  },
+  [AudioContextType.EXPLORE]: {
+    bgmKey: 'bgm_explore',
+    defaultVolume: 0.5,
+    crossFadeDuration: 1000,
+    weatherVariations: {
+      [WeatherType.RAIN]: 'bgm_rain',
+      [WeatherType.HEAVY_RAIN]: 'bgm_heavy_rain',
+      [WeatherType.SNOW]: 'bgm_snow',
+      [WeatherType.STORM]: 'bgm_storm',
+      [WeatherType.AURORA]: 'bgm_aurora',
+      [WeatherType.METEOR]: 'bgm_meteor'
+    },
+    timeVariations: {
+      [TimeOfDay.DAWN]: 'bgm_dawn',
+      [TimeOfDay.NIGHT]: 'bgm_night',
+      [TimeOfDay.MIDNIGHT]: 'bgm_midnight'
+    }
+  },
+  [AudioContextType.SYNTHESIS]: {
+    bgmKey: 'bgm_synthesis',
+    defaultVolume: 0.6,
+    crossFadeDuration: 600
+  },
+  [AudioContextType.COMPLETE]: {
+    bgmKey: 'bgm_complete',
+    defaultVolume: 0.7,
+    crossFadeDuration: 1500
+  }
+};
+
+export const SFX_CONFIG: Record<string, { volume: number; context: AudioContextType }> = {
+  sfx_collect: { volume: 0.3, context: AudioContextType.EXPLORE },
+  sfx_collect_rare: { volume: 0.6, context: AudioContextType.EXPLORE },
+  sfx_collect_legendary: { volume: 0.8, context: AudioContextType.EXPLORE },
+  sfx_synthesis: { volume: 0.5, context: AudioContextType.SYNTHESIS },
+  sfx_synthesis_mutation: { volume: 0.7, context: AudioContextType.SYNTHESIS },
+  sfx_synthesis_fail: { volume: 0.4, context: AudioContextType.SYNTHESIS },
+  sfx_weather_change: { volume: 0.4, context: AudioContextType.EXPLORE },
+  sfx_time_dawn: { volume: 0.5, context: AudioContextType.EXPLORE },
+  sfx_time_night: { volume: 0.5, context: AudioContextType.EXPLORE },
+  sfx_rare_drop: { volume: 0.7, context: AudioContextType.EXPLORE },
+  sfx_special_event: { volume: 0.8, context: AudioContextType.EXPLORE },
+  sfx_rain: { volume: 0.2, context: AudioContextType.EXPLORE },
+  sfx_wind: { volume: 0.15, context: AudioContextType.EXPLORE },
+  sfx_thunder: { volume: 0.6, context: AudioContextType.EXPLORE }
+};

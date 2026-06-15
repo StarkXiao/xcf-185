@@ -26,7 +26,10 @@ import {
   CollectionTaskStatus,
   CollectionTaskChain,
   DailyReward,
-  DailyRewardState
+  DailyRewardState,
+  EnvironmentState,
+  EnvironmentStats,
+  RareDropEvent
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -58,7 +61,10 @@ import {
   INITIAL_COLLECTION_TASK_CHAINS,
   INITIAL_RED_DOT_STATE,
   DAILY_REWARDS,
-  INITIAL_DAILY_REWARD_STATE
+  INITIAL_DAILY_REWARD_STATE,
+  INITIAL_ENVIRONMENT,
+  INITIAL_ENVIRONMENT_STATS,
+  RARE_DROP_EVENTS
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -95,10 +101,11 @@ export class SaveManager {
     this.migrationMap.set('2.0.0', this.migrateFrom2_0_0.bind(this));
     this.migrationMap.set('3.0.0', this.migrateFrom3_0_0.bind(this));
     this.migrationMap.set('4.0.0', this.migrateFrom4_0_0.bind(this));
+    this.migrationMap.set('4.1.0', this.migrateFrom4_1_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -250,6 +257,30 @@ export class SaveManager {
       if (saveData.gameState.efficiencyBoost === undefined) {
         saveData.gameState.efficiencyBoost = initialState.efficiencyBoost || 0;
         warnings.push('新增字段 efficiencyBoost 已设为默认值');
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom4_1_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    const initialState = getInitialGameState();
+    if (saveData.gameState) {
+      if (!saveData.gameState.environment) {
+        saveData.gameState.environment = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT));
+        warnings.push('新增字段 environment 已设为默认值');
+      }
+      if (!saveData.gameState.environmentStats) {
+        saveData.gameState.environmentStats = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT_STATS));
+        warnings.push('新增字段 environmentStats 已设为默认值');
+      }
+      if (!saveData.gameState.rareDropEvents || saveData.gameState.rareDropEvents.length === 0) {
+        saveData.gameState.rareDropEvents = RARE_DROP_EVENTS.map(event => ({
+          ...event,
+          lastTriggered: 0,
+          count: 0
+        }));
+        warnings.push('新增字段 rareDropEvents 已设为默认值');
       }
     }
     return { data: saveData, warnings };
@@ -1376,6 +1407,14 @@ export class SaveManager {
               }
             }
           });
+          break;
+
+        case InheritanceType.ENVIRONMENT_STATS:
+          if (previousState.environmentStats) {
+            newState.environmentStats = JSON.parse(JSON.stringify(previousState.environmentStats));
+            newState.environmentStats.totalDaysPlayed = 0;
+            newState.environmentStats.nightsPlayed = 0;
+          }
           break;
       }
     });

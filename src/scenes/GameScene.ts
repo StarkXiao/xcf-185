@@ -5,6 +5,9 @@ import { PlayerController } from '../modules/PlayerController';
 import { PetalSystem } from '../modules/PetalSystem';
 import { SynthesisSystem } from '../modules/SynthesisSystem';
 import { UIManager } from '../modules/UIManager';
+import { TimeSystem } from '../modules/TimeSystem';
+import { WeatherSystem } from '../modules/WeatherSystem';
+import { RareDropSystem } from '../modules/RareDropSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioContextType } from '../types';
@@ -15,11 +18,15 @@ export class GameScene extends Phaser.Scene {
   private petalSystem!: PetalSystem;
   private synthesisSystem!: SynthesisSystem;
   private uiManager!: UIManager;
+  private timeSystem!: TimeSystem;
+  private weatherSystem!: WeatherSystem;
+  private rareDropSystem!: RareDropSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
   private readonly TREND_INTERVAL: number = 30000;
   private useInheritance: boolean = false;
+  public player!: Phaser.Physics.Arcade.Sprite;
 
   constructor() {
     super('Game');
@@ -42,8 +49,15 @@ export class GameScene extends Phaser.Scene {
     this.sceneRenderer = new SceneRenderer(this);
     this.sceneRenderer.create();
 
+    this.timeSystem = new TimeSystem(this);
+    this.timeSystem.create();
+
+    this.weatherSystem = new WeatherSystem(this);
+    this.weatherSystem.create();
+
     this.playerController = new PlayerController(this);
     this.playerController.create();
+    this.player = this.playerController.getPlayer();
 
     this.petalSystem = new PetalSystem(this);
     this.petalSystem.create();
@@ -54,12 +68,17 @@ export class GameScene extends Phaser.Scene {
       this.petalSystem.setEfficiencyBoost(state.efficiencyBoost);
     }
 
+    this.rareDropSystem = new RareDropSystem(this);
+    this.rareDropSystem.setPetalSystem(this.petalSystem);
+    this.rareDropSystem.create();
+
     this.synthesisSystem = new SynthesisSystem(this);
 
     this.uiManager = new UIManager(this, this.synthesisSystem);
     this.uiManager.create();
 
     (this as any).petalSystem = this.petalSystem;
+    (this as any).player = this.player;
 
     SaveManager.getInstance().addTrendPoint();
 
@@ -69,12 +88,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.timeSystem.update(time, delta);
+    this.weatherSystem.update(time, delta);
     this.sceneRenderer.update(time, delta);
     this.playerController.update(time, delta);
     
     const collectRange = this.playerController.getCollectRange();
     const attractRange = this.playerController.getAttractRange();
     this.petalSystem.update(time, delta, this.playerController.getPlayer(), collectRange, attractRange);
+    
+    this.rareDropSystem.update(time, delta);
 
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
@@ -109,6 +132,15 @@ export class GameScene extends Phaser.Scene {
     const state = SaveManager.getInstance().getGameState();
     SaveManager.getInstance().saveGame(state);
 
+    if (this.timeSystem) {
+      this.timeSystem.destroy();
+    }
+    if (this.weatherSystem) {
+      this.weatherSystem.destroy();
+    }
+    if (this.rareDropSystem) {
+      this.rareDropSystem.destroy();
+    }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();
     }

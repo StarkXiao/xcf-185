@@ -190,6 +190,9 @@ export interface GameState {
   regionHeats: RegionHeat[];
   consecutiveCollect: ConsecutiveCollect | null;
   dailyRewardState: DailyRewardState;
+  environment: EnvironmentState;
+  environmentStats: EnvironmentStats;
+  rareDropEvents: RareDropEvent[];
 }
 
 export interface AudioContextPreferences {
@@ -250,6 +253,9 @@ export interface SpawnAdjustment {
   type: PetalType;
   heatMultiplier: number;
   decayMultiplier: number;
+  timeMultiplier: number;
+  weatherMultiplier: number;
+  seasonMultiplier: number;
   finalWeight: number;
 }
 
@@ -399,13 +405,113 @@ export interface RareDrop {
   description: string;
 }
 
+export enum TimeOfDay {
+  DAWN = 'dawn',
+  DAY = 'day',
+  DUSK = 'dusk',
+  NIGHT = 'night',
+  MIDNIGHT = 'midnight'
+}
+
+export enum WeatherType {
+  CLEAR = 'clear',
+  CLOUDY = 'cloudy',
+  RAIN = 'rain',
+  HEAVY_RAIN = 'heavy_rain',
+  SNOW = 'snow',
+  FOG = 'fog',
+  WINDY = 'windy',
+  STORM = 'storm',
+  AURORA = 'aurora',
+  METEOR = 'meteor'
+}
+
+export enum SeasonType {
+  SPRING = 'spring',
+  SUMMER = 'summer',
+  AUTUMN = 'autumn',
+  WINTER = 'winter'
+}
+
+export interface TimeState {
+  gameTime: number;
+  dayCount: number;
+  timeOfDay: TimeOfDay;
+  timeProgress: number;
+  season: SeasonType;
+  dayStartTime: number;
+  isFullMoon: boolean;
+  isMeteorShower: boolean;
+  moonPhase: number;
+}
+
+export interface WeatherState {
+  currentWeather: WeatherType;
+  weatherDuration: number;
+  weatherIntensity: number;
+  nextWeatherChange: number;
+  weatherTransition: number;
+  targetWeather: WeatherType;
+}
+
+export interface EnvironmentState {
+  time: TimeState;
+  weather: WeatherState;
+  ambientLight: number;
+  skyColor: number;
+  fogDensity: number;
+  windSpeed: number;
+  temperature: number;
+}
+
+export interface WeatherEffect {
+  type: WeatherType;
+  spawnWeightModifier: Partial<Record<PetalType, number>>;
+  rareDropBoost: number;
+  ambientMultiplier: number;
+  specialEvent?: boolean;
+  description: string;
+}
+
+export interface TimeEffect {
+  timeOfDay: TimeOfDay;
+  spawnWeightModifier: Partial<Record<PetalType, number>>;
+  rareDropBoost: number;
+  lightLevel: number;
+  description: string;
+}
+
+export interface RareDropEvent {
+  id: string;
+  type: PetalType;
+  rarity: 'legendary' | 'epic' | 'rare' | 'uncommon';
+  trigger: 'time' | 'weather' | 'season' | 'random' | 'milestone';
+  triggerCondition: string;
+  probability: number;
+  cooldown: number;
+  lastTriggered: number;
+  count: number;
+  maxCount: number;
+  announcement: string;
+}
+
+export interface EnvironmentStats {
+  totalDaysPlayed: number;
+  nightsPlayed: number;
+  weatherExperience: Record<WeatherType, number>;
+  rareDropsFound: RareDropEvent[];
+  specialEventsWitnessed: string[];
+  totalRareDrops: number;
+}
+
 export enum InheritanceType {
   PETAL_RESERVE = 'petal_reserve',
   UNLOCKED_RECIPES = 'unlocked_recipes',
   DISCOVERED_MUTATIONS = 'discovered_mutations',
   COLLECTION_PROGRESS = 'collection_progress',
   EFFICIENCY_BOOST = 'efficiency_boost',
-  GOAL_PROGRESS = 'goal_progress'
+  GOAL_PROGRESS = 'goal_progress',
+  ENVIRONMENT_STATS = 'environment_stats'
 }
 
 export interface InheritanceOption {
@@ -552,6 +658,7 @@ export interface GameEvents {
     decayPenalty?: number;
     consecutiveCount?: number;
     collectBonus?: string;
+    isRare?: boolean;
   };
   'petal:spawned': { 
     type: PetalType; 
@@ -560,6 +667,7 @@ export interface GameEvents {
     regionId?: string;
     heatBonus?: number;
     decayPenalty?: number;
+    isRare?: boolean;
   };
   'synthesis:start': { recipeId: string };
   'synthesis:complete': SynthesisResultData;
@@ -612,4 +720,12 @@ export interface GameEvents {
   'reddot:updated': {};
   'dailylogin:checked': { state: DailyRewardState };
   'dailyreward:claimed': { reward: DailyReward; day: number };
+  'time:changed': { timeOfDay: TimeOfDay; dayCount: number; season: SeasonType };
+  'time:newday': { dayCount: number; season: SeasonType; isFullMoon: boolean };
+  'weather:changed': { oldWeather: WeatherType; newWeather: WeatherType; intensity: number };
+  'weather:special': { type: WeatherType; description: string };
+  'environment:updated': { environment: EnvironmentState };
+  'raredrop:spawned': { event: RareDropEvent; x: number; y: number };
+  'raredrop:collected': { event: RareDropEvent; type: PetalType };
+  'season:changed': { oldSeason: SeasonType; newSeason: SeasonType };
 }
