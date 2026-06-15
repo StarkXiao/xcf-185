@@ -60,6 +60,8 @@ import {
   AUTO_BACKUP_INTERVAL,
   INITIAL_COLLECTION_TASKS,
   INITIAL_COLLECTION_TASK_CHAINS,
+  INITIAL_COMMISSION_TASKS,
+  INITIAL_COMMISSION_TASK_CHAINS,
   INITIAL_RED_DOT_STATE,
   DAILY_REWARDS,
   INITIAL_DAILY_REWARD_STATE,
@@ -103,10 +105,11 @@ export class SaveManager {
     this.migrationMap.set('3.0.0', this.migrateFrom3_0_0.bind(this));
     this.migrationMap.set('4.0.0', this.migrateFrom4_0_0.bind(this));
     this.migrationMap.set('4.1.0', this.migrateFrom4_1_0.bind(this));
+    this.migrationMap.set('5.0.0', this.migrateFrom5_0_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -195,10 +198,15 @@ export class SaveManager {
     const migratedCommissionTasks = oldState.commissionTasks || JSON.parse(JSON.stringify(initialState.commissionTasks));
     const migratedCommissionTaskChains = oldState.commissionTaskChains || JSON.parse(JSON.stringify(initialState.commissionTaskChains));
     const oldRedDot = oldState.redDotState || {};
+    const defaultRedDot = JSON.parse(JSON.stringify(initialState.redDotState));
     const migratedRedDotState = {
-      ...JSON.parse(JSON.stringify(initialState.redDotState)),
+      ...defaultRedDot,
       ...oldRedDot
     };
+    if (!Array.isArray(migratedRedDotState.commissionNewUnlocks)) migratedRedDotState.commissionNewUnlocks = [];
+    if (!Array.isArray(migratedRedDotState.claimableCommissions)) migratedRedDotState.claimableCommissions = [];
+    if (!Array.isArray(migratedRedDotState.claimableCommissionChains)) migratedRedDotState.claimableCommissionChains = [];
+    if (typeof migratedRedDotState.lastViewedCommission !== 'number') migratedRedDotState.lastViewedCommission = 0;
     return {
       ...saveData,
       gameState: {
@@ -240,7 +248,17 @@ export class SaveManager {
     const initialSettings = getInitialSettings();
     const oldState = saveData.gameState || {};
     const oldSettings = saveData.settings || {};
-    saveData.gameState = { ...initialState, ...oldState };
+
+    const mergedRedDot = {
+      ...initialState.redDotState,
+      ...(oldState.redDotState || {})
+    };
+    if (!Array.isArray(mergedRedDot.commissionNewUnlocks)) mergedRedDot.commissionNewUnlocks = [];
+    if (!Array.isArray(mergedRedDot.claimableCommissions)) mergedRedDot.claimableCommissions = [];
+    if (!Array.isArray(mergedRedDot.claimableCommissionChains)) mergedRedDot.claimableCommissionChains = [];
+    if (typeof mergedRedDot.lastViewedCommission !== 'number') mergedRedDot.lastViewedCommission = 0;
+
+    saveData.gameState = { ...initialState, ...oldState, redDotState: mergedRedDot };
     saveData.settings = { ...initialSettings, ...oldSettings };
     if (!saveData.timestamp) {
       saveData.timestamp = Date.now();
@@ -301,6 +319,60 @@ export class SaveManager {
         }));
         warnings.push('新增字段 rareDropEvents 已设为默认值');
       }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_0_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.commissionTasks || !Array.isArray(saveData.gameState.commissionTasks)) {
+        saveData.gameState.commissionTasks = JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASKS));
+        warnings.push('新增字段 commissionTasks 已设为默认值');
+      }
+      if (!saveData.gameState.commissionTaskChains || !Array.isArray(saveData.gameState.commissionTaskChains)) {
+        saveData.gameState.commissionTaskChains = JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASK_CHAINS));
+        warnings.push('新增字段 commissionTaskChains 已设为默认值');
+      }
+      if (!saveData.gameState.redDotState) {
+        saveData.gameState.redDotState = JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE));
+        warnings.push('新增字段 redDotState 已设为默认值');
+      } else {
+        const defaultRedDot = JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE));
+        if (!Array.isArray(saveData.gameState.redDotState.commissionNewUnlocks)) {
+          saveData.gameState.redDotState.commissionNewUnlocks = defaultRedDot.commissionNewUnlocks;
+          warnings.push('redDotState.commissionNewUnlocks 已补齐');
+        }
+        if (!Array.isArray(saveData.gameState.redDotState.claimableCommissions)) {
+          saveData.gameState.redDotState.claimableCommissions = defaultRedDot.claimableCommissions;
+          warnings.push('redDotState.claimableCommissions 已补齐');
+        }
+        if (!Array.isArray(saveData.gameState.redDotState.claimableCommissionChains)) {
+          saveData.gameState.redDotState.claimableCommissionChains = defaultRedDot.claimableCommissionChains;
+          warnings.push('redDotState.claimableCommissionChains 已补齐');
+        }
+        if (typeof saveData.gameState.redDotState.lastViewedCommission !== 'number') {
+          saveData.gameState.redDotState.lastViewedCommission = 0;
+          warnings.push('redDotState.lastViewedCommission 已补齐');
+        }
+      }
+      saveData.gameState.collectionTasks?.forEach((task: any, idx: number) => {
+        if (!task.conditions) {
+          saveData.gameState.collectionTasks[idx] = {
+            ...task,
+            conditions: []
+          };
+        }
+      });
+      saveData.gameState.commissionTasks?.forEach((task: any, idx: number) => {
+        if (!task.conditions) {
+          saveData.gameState.commissionTasks[idx] = {
+            ...task,
+            conditions: []
+          };
+          warnings.push(`commissionTask[${task.id}] 缺少 conditions 字段，已补齐`);
+        }
+      });
     }
     return { data: saveData, warnings };
   }
@@ -1298,11 +1370,19 @@ export class SaveManager {
   }
 
   public getCommissionTasks(): CollectionTask[] {
-    return this.getGameState().commissionTasks;
+    const state = this.getGameState();
+    if (!state.commissionTasks || !Array.isArray(state.commissionTasks)) {
+      return JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASKS));
+    }
+    return state.commissionTasks;
   }
 
   public getCommissionTaskChains(): CollectionTaskChain[] {
-    return this.getGameState().commissionTaskChains;
+    const state = this.getGameState();
+    if (!state.commissionTaskChains || !Array.isArray(state.commissionTaskChains)) {
+      return JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASK_CHAINS));
+    }
+    return state.commissionTaskChains;
   }
 
   public viewCommissionPanel(): void {
@@ -1928,6 +2008,40 @@ export class SaveManager {
     if (!state.redDotState) {
       warnings.push('redDotState 数据异常，已重置');
       state.redDotState = JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE));
+      fixed = true;
+    } else {
+      const defaultRedDot = JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE));
+      if (!Array.isArray(state.redDotState.commissionNewUnlocks)) {
+        state.redDotState.commissionNewUnlocks = defaultRedDot.commissionNewUnlocks;
+        warnings.push('redDotState.commissionNewUnlocks 数据异常，已重置');
+        fixed = true;
+      }
+      if (!Array.isArray(state.redDotState.claimableCommissions)) {
+        state.redDotState.claimableCommissions = defaultRedDot.claimableCommissions;
+        warnings.push('redDotState.claimableCommissions 数据异常，已重置');
+        fixed = true;
+      }
+      if (!Array.isArray(state.redDotState.claimableCommissionChains)) {
+        state.redDotState.claimableCommissionChains = defaultRedDot.claimableCommissionChains;
+        warnings.push('redDotState.claimableCommissionChains 数据异常，已重置');
+        fixed = true;
+      }
+      if (typeof state.redDotState.lastViewedCommission !== 'number') {
+        state.redDotState.lastViewedCommission = 0;
+        warnings.push('redDotState.lastViewedCommission 数据异常，已重置');
+        fixed = true;
+      }
+    }
+
+    if (!state.commissionTasks || !Array.isArray(state.commissionTasks)) {
+      warnings.push('commissionTasks 数据异常，已重置');
+      state.commissionTasks = JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASKS));
+      fixed = true;
+    }
+
+    if (!state.commissionTaskChains || !Array.isArray(state.commissionTaskChains)) {
+      warnings.push('commissionTaskChains 数据异常，已重置');
+      state.commissionTaskChains = JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASK_CHAINS));
       fixed = true;
     }
 

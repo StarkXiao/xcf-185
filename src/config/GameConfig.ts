@@ -1889,7 +1889,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.0.0';
+export const SAVE_VERSION = '5.1.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;

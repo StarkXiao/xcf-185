@@ -9,7 +9,8 @@ import {
   AudioContextType, 
   CollectionTask, 
   CollectionTaskChain, 
-  CollectionTaskStatus 
+  CollectionTaskStatus,
+  RedDotState
 } from '../types';
 
 export class MenuScene extends Phaser.Scene {
@@ -1589,9 +1590,10 @@ export class MenuScene extends Phaser.Scene {
     if (!this.commissionBtn) return;
 
     const state = SaveManager.getInstance().getGameState();
-    const hasUnclaimed = state.redDotState.claimableCommissions.length > 0 || 
-                        state.redDotState.claimableCommissionChains.length > 0 ||
-                        state.redDotState.commissionNewUnlocks.length > 0;
+    const rd: Partial<RedDotState> = state.redDotState || {};
+    const hasUnclaimed = (rd.claimableCommissions?.length || 0) > 0 || 
+                        (rd.claimableCommissionChains?.length || 0) > 0 ||
+                        (rd.commissionNewUnlocks?.length || 0) > 0;
 
     if (this.commissionRedDot) {
       this.commissionRedDot.destroy();
@@ -1706,9 +1708,11 @@ export class MenuScene extends Phaser.Scene {
 
     this.commissionListContainer.removeAll(true);
 
-    const chains = SaveManager.getInstance().getCommissionTaskChains();
-    const tasks = SaveManager.getInstance().getCommissionTasks();
+    const chains = SaveManager.getInstance().getCommissionTaskChains() || [];
+    const tasks = SaveManager.getInstance().getCommissionTasks() || [];
     const state = SaveManager.getInstance().getGameState();
+    const claimableCommissions = state.redDotState?.claimableCommissions || [];
+    const claimableCommissionChains = state.redDotState?.claimableCommissionChains || [];
 
     let currentY = 0;
 
@@ -1806,7 +1810,7 @@ export class MenuScene extends Phaser.Scene {
         }
         this.commissionListContainer!.add(chainRewardBtnText);
 
-        if (claimable && state.redDotState.claimableCommissionChains.includes(chain.id)) {
+        if (claimable && claimableCommissionChains.includes(chain.id)) {
           const redDot = this.add.graphics();
           redDot.fillStyle(0xff4444, 1);
           redDot.fillCircle(chainCardX + chainCardWidth - 20, currentY + 18, 5);
@@ -1925,7 +1929,7 @@ export class MenuScene extends Phaser.Scene {
           });
           this.commissionListContainer!.add(claimBtn);
 
-          if (state.redDotState.claimableCommissions.includes(task.id)) {
+          if (claimableCommissions.includes(task.id)) {
             const redDot = this.add.graphics();
             redDot.fillStyle(0xff4444, 1);
             redDot.fillCircle(btnX + 32, btnY - 14, 5);
