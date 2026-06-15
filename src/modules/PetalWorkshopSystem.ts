@@ -17,6 +17,7 @@ import {
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
+import { PetalWorkshopTestRunner, TestSuiteResult } from './PetalWorkshopTestRunner';
 
 export class PetalWorkshopSystem {
   private scene: Phaser.Scene;
@@ -1202,6 +1203,19 @@ export class PetalWorkshopSystem {
         );
       }
     });
+  }
+
+  public runBuiltInRegressionTests(): {
+    totalPassed: number;
+    totalFailed: number;
+    suites: TestSuiteResult[];
+  } {
+    const runner = new PetalWorkshopTestRunner();
+    const suites = runner.runAll();
+    runner.printResults();
+    const summary = runner.getSummary();
+    EventManager.getInstance().emit('workshop:regression_tests_complete' as any, summary);
+    return summary;
   }
 
   public destroy(): void {

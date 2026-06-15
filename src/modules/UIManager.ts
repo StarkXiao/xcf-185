@@ -4470,6 +4470,26 @@ export class UIManager {
     closeBtn.on('pointerup', () => this.closeWorkshopStatsPanel());
     this.workshopStatsPanel.add(closeBtn);
 
+    const testBtn = this.scene.add.text(GAME_WIDTH - 180, 45, '🧪 回归测试', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffffff',
+      backgroundColor: '#3a7d44',
+      padding: { x: 10, y: 6 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(170);
+
+    testBtn.on('pointerup', () => {
+      const gameScene = this.scene as any;
+      if (gameScene && gameScene.petalWorkshopSystem) {
+        const result = gameScene.petalWorkshopSystem.runBuiltInRegressionTests();
+        const message = `🎉 回归测试完成！\n\n✅ 通过: ${result.totalPassed}\n❌ 失败: ${result.totalFailed}\n\n详情见浏览器控制台 (F12)`;
+        alert(message);
+      } else {
+        alert('⚠️ 工坊系统未就绪');
+      }
+    });
+    this.workshopStatsPanel.add(testBtn);
+
     this.workshopStatsPanel.setAlpha(0);
     this.scene.tweens.add({
       targets: this.workshopStatsPanel,
