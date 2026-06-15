@@ -9,7 +9,8 @@ import {
 import {
   REGION_CONFIGS,
   GAME_WIDTH,
-  GAME_HEIGHT
+  GAME_HEIGHT,
+  formatPlayTime
 } from '../config/GameConfig';
 import { EventManager } from '../managers/EventManager';
 import { SaveManager } from '../managers/SaveManager';
@@ -380,7 +381,11 @@ export class RegionMapPanel {
 
       let progressStr = '';
       if (progress.target > 1) {
-        progressStr = ` (${Math.min(progress.current, progress.target)}/${progress.target})`;
+        if (condition.type === RegionUnlockConditionType.PLAY_TIME) {
+          progressStr = ` (${formatPlayTime(Math.min(progress.current, progress.target))}/${formatPlayTime(progress.target)})`;
+        } else {
+          progressStr = ` (${Math.min(progress.current, progress.target)}/${progress.target})`;
+        }
       }
 
       const condText = this.scene.add.text(36, yOffset, condition.description + progressStr, {

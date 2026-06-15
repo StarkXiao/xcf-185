@@ -208,7 +208,7 @@ export const REGION_CONFIGS: RegionConfig[] = [
       },
       {
         type: RegionUnlockConditionType.PLAY_TIME,
-        targetCount: 300000,
+        targetCount: 300,
         description: '游戏时长达到5分钟'
       }
     ],
@@ -299,6 +299,20 @@ export function getInitialRegionUnlockStates(): RegionUnlockState[] {
 export function getDefaultCurrentRegionId(): string {
   const defaultRegion = REGION_CONFIGS.find(r => !r.isLockedByDefault);
   return defaultRegion ? defaultRegion.id : REGION_CONFIGS[0].id;
+}
+
+export function formatPlayTime(seconds: number): string {
+  if (seconds < 60) {
+    return `${Math.floor(seconds)}秒`;
+  } else if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`;
+  } else {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return mins > 0 ? `${hours}小时${mins}分` : `${hours}小时`;
+  }
 }
 
 export const HEAT_CONFIG = {
@@ -2314,7 +2328,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.3.0';
+export const SAVE_VERSION = '5.3.1';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
