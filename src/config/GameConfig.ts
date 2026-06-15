@@ -19,7 +19,10 @@ import {
   TaskReward,
   Region,
   DailyReward,
-  DailyRewardState
+  DailyRewardState,
+  TutorialConditionType,
+  TutorialValidationType,
+  TutorialGuideProgress
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -174,20 +177,48 @@ export const TUTORIAL_STEPS = [
     title: '欢迎来到梦境森林',
     content: '点击屏幕任意位置，角色会自动寻路移动过去。遇到障碍物时会自动绕行哦！',
     actionRequired: 'move' as const,
-    completed: false
+    completed: false,
+    validation: {
+      type: TutorialValidationType.MOVE_TO_AREA
+    },
+    skipConfig: {
+      allowed: true,
+      confirmRequired: true,
+      confirmMessage: '跳过移动教学？后续可随时点击移动'
+    },
+    retryOnFail: true,
+    failureMessage: '请点击屏幕任意位置移动角色',
+    successMessage: '✅ 移动成功！'
   },
   {
     id: 'tutorial_collect',
     title: '收集花瓣',
     content: '靠近发光的花瓣即可自动收集。收集越多，你的吸附范围会越大！',
     actionRequired: 'collect' as const,
-    completed: false
+    completed: false,
+    validation: {
+      type: TutorialValidationType.COLLECT_PETAL
+    },
+    skipConfig: {
+      allowed: true,
+      skipToStepId: 'tutorial_range',
+      confirmRequired: true,
+      confirmMessage: '跳过收集教学？你仍可自行探索收集'
+    },
+    retryOnFail: true,
+    failureMessage: '请靠近花瓣进行收集',
+    successMessage: '✅ 收集成功！'
   },
   {
     id: 'tutorial_range',
     title: '吸附范围成长',
     content: '注意角色周围的光圈，那是你的收集范围。每收集20朵花瓣，范围就会扩大！',
-    completed: false
+    completed: false,
+    isOptional: true,
+    skipConfig: {
+      allowed: true,
+      confirmRequired: false
+    }
   },
   {
     id: 'tutorial_synthesis',
@@ -195,19 +226,67 @@ export const TUTORIAL_STEPS = [
     content: '点击右下角的合成按钮，可以将收集的花瓣合成更高级的品种。',
     highlightElement: 'synthesis_button',
     actionRequired: 'click' as const,
-    completed: false
+    completed: false,
+    validation: {
+      type: TutorialValidationType.CLICK_ELEMENT,
+      target: 'synthesis_button'
+    },
+    unlockCondition: {
+      type: TutorialConditionType.TOTAL_COLLECTED,
+      count: 3
+    },
+    skipConfig: {
+      allowed: true,
+      confirmRequired: true,
+      confirmMessage: '跳过合成教学？合成是游戏核心玩法'
+    },
+    retryOnFail: true,
+    failureMessage: '请点击高亮的合成按钮',
+    successMessage: '✅ 成功打开合成面板！',
+    delayMs: 500
+  },
+  {
+    id: 'tutorial_advanced_synthesis',
+    title: '进阶合成',
+    content: '当收集足够花瓣后，可以尝试更高级的合成配方，有机会获得稀有变异花瓣！',
+    actionRequired: 'synthesize' as const,
+    completed: false,
+    isOptional: true,
+    validation: {
+      type: TutorialValidationType.SYNTHESIZE_RECIPE
+    },
+    unlockCondition: {
+      type: TutorialConditionType.TOTAL_SYNTHESIZED,
+      count: 1
+    },
+    skipConfig: {
+      allowed: true,
+      skipToStepId: 'tutorial_settings',
+      confirmRequired: false
+    },
+    retryOnFail: true,
+    failureMessage: '请完成一次合成操作',
+    successMessage: '✅ 合成完成！'
   },
   {
     id: 'tutorial_settings',
     title: '操作设置',
     content: '在游戏中可以随时调整操作方式，包括摇杆开关、自动寻路等功能。',
-    completed: false
+    completed: false,
+    isOptional: true,
+    skipConfig: {
+      allowed: true,
+      confirmRequired: false
+    }
   },
   {
     id: 'tutorial_complete',
     title: '教程完成！',
     content: '恭喜你掌握了基本操作！现在去探索梦境森林，收集所有稀有花瓣吧！',
-    completed: false
+    completed: false,
+    skipConfig: {
+      allowed: false
+    }
   }
 ];
 
@@ -1355,7 +1434,10 @@ export const INITIAL_TUTORIAL_STATE = {
   currentStep: 0,
   steps: JSON.parse(JSON.stringify(TUTORIAL_STEPS)),
   completed: false,
-  dismissed: false
+  dismissed: false,
+  activeGuideId: undefined as string | undefined,
+  guideProgress: [] as TutorialGuideProgress[],
+  validationAttempts: {} as Record<string, number>
 };
 
 export const INITIAL_COLLECT_RANGE_STATE = {

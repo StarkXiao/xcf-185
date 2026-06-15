@@ -1,4 +1,4 @@
-import { ControlSettings, TutorialState } from '../types';
+import { ControlSettings, TutorialState, TutorialGuideProgress } from '../types';
 import { 
   SETTINGS_STORAGE_KEY, 
   TUTORIAL_STORAGE_KEY,
@@ -44,7 +44,13 @@ export class SettingsManager {
       const data = localStorage.getItem(TUTORIAL_STORAGE_KEY);
       if (data) {
         const parsed = JSON.parse(data);
-        return { ...getInitialTutorialState(), ...parsed };
+        const initial = getInitialTutorialState();
+        return {
+          ...initial,
+          ...parsed,
+          guideProgress: parsed.guideProgress || initial.guideProgress,
+          validationAttempts: parsed.validationAttempts || initial.validationAttempts
+        };
       }
     } catch (error) {
       console.error('Failed to load tutorial state:', error);
@@ -111,9 +117,11 @@ export class SettingsManager {
   }
 
   public getTutorialState(): TutorialState {
-    return { 
+    return {
       ...this.tutorialState,
-      steps: JSON.parse(JSON.stringify(this.tutorialState.steps))
+      steps: JSON.parse(JSON.stringify(this.tutorialState.steps)),
+      guideProgress: JSON.parse(JSON.stringify(this.tutorialState.guideProgress)),
+      validationAttempts: { ...this.tutorialState.validationAttempts }
     };
   }
 
@@ -129,6 +137,15 @@ export class SettingsManager {
     }
     if (state.dismissed !== undefined) {
       this.tutorialState.dismissed = state.dismissed;
+    }
+    if (state.activeGuideId !== undefined) {
+      this.tutorialState.activeGuideId = state.activeGuideId;
+    }
+    if (state.guideProgress) {
+      this.tutorialState.guideProgress = JSON.parse(JSON.stringify(state.guideProgress));
+    }
+    if (state.validationAttempts) {
+      this.tutorialState.validationAttempts = { ...state.validationAttempts };
     }
     this.saveTutorialState();
   }
@@ -171,9 +188,47 @@ export class SettingsManager {
   public resetTutorial(): void {
     this.tutorialState = getInitialTutorialState();
     this.saveTutorialState();
-    EventManager.getInstance().emit('tutorial:next', { 
-      step: { ...this.tutorialState.steps[0] } 
+    EventManager.getInstance().emit('tutorial:next', {
+      step: { ...this.tutorialState.steps[0] }
     });
+  }
+
+  public getGuideProgress(guideId: string): TutorialGuideProgress | undefined {
+    return this.tutorialState.guideProgress.find(p => p.guideId === guideId);
+  }
+
+  public isGuideCompleted(guideId: string): boolean {
+    const progress = this.tutorialState.guideProgress.find(p => p.guideId === guideId);
+    return progress ? progress.completedAt !== undefined : false;
+  }
+
+  public isStepCompleted(stepId: string): boolean {
+    return this.tutorialState.steps.some(s => s.id === stepId && s.completed);
+  }
+
+  public isStepSkipped(stepId: string): boolean {
+    return this.tutorialState.guideProgress.some(p => p.skippedSteps.includes(stepId));
+  }
+
+  public getValidationAttempts(stepId: string): number {
+    return this.tutorialState.validationAttempts[stepId] || 0;
+  }
+
+  public incrementValidationAttempts(stepId: string): number {
+    const current = this.tutorialState.validationAttempts[stepId] || 0;
+    const next = current + 1;
+    this.tutorialState.validationAttempts[stepId] = next;
+    this.saveTutorialState();
+    return next;
+  }
+
+  public clearValidationAttempts(stepId?: string): void {
+    if (stepId) {
+      delete this.tutorialState.validationAttempts[stepId];
+    } else {
+      this.tutorialState.validationAttempts = {};
+    }
+    this.saveTutorialState();
   }
 
   private saveTutorialState(): void {

@@ -261,45 +261,6 @@ export interface SynthesisResultData {
   returnedPetals?: { type: PetalType; count: number }[];
 }
 
-export interface GameEvents {
-  'petal:collected': { 
-    type: PetalType; 
-    count: number;
-    regionId?: string;
-    heatBonus?: number;
-    decayPenalty?: number;
-    consecutiveCount?: number;
-    collectBonus?: string;
-  };
-  'petal:spawned': { 
-    type: PetalType; 
-    x: number; 
-    y: number;
-    regionId?: string;
-    heatBonus?: number;
-    decayPenalty?: number;
-  };
-  'synthesis:start': { recipeId: string };
-  'synthesis:complete': SynthesisResultData;
-  'synthesis:mutation': SynthesisResultData;
-  'synthesis:fail': SynthesisResultData;
-  'synthesis:recipe_unlocked': { recipeId: string };
-  'synthesis:record_added': { record: SynthesisRecord };
-  'collection:unlock': { type: PetalType; category: 'normal' | 'mutation' | 'failed' };
-  'game:complete': { playTime: number; totalCollected: number };
-  'audio:play': { key: string; volume?: number };
-  'audio:context_changed': { context: AudioContextType; previousContext: AudioContextType | null };
-  'audio:context_preference_updated': { context: AudioContextType; preferences: AudioContextPreferences };
-  'save:update': { state: GameState };
-  'trend:updated': { point: ResourceTrendPoint };
-  'goal:progress': { goalId: string; current: number; target: number };
-  'goal:completed': { goal: Goal };
-  'goal:claimed': { goal: Goal };
-  'status:show': { message: StatusMessage };
-  'status:dismiss': { id: string };
-  'quickentry:action': { type: QuickEntryType };
-}
-
 export interface Position {
   x: number;
   y: number;
@@ -332,6 +293,46 @@ export interface ControlSettings {
   sensitivity: number;
 }
 
+export enum TutorialConditionType {
+  PETAL_COUNT = 'petal_count',
+  PETAL_UNLOCKED = 'petal_unlocked',
+  RECIPE_UNLOCKED = 'recipe_unlocked',
+  TOTAL_COLLECTED = 'total_collected',
+  TOTAL_SYNTHESIZED = 'total_synthesized',
+  STEP_COMPLETED = 'step_completed',
+  GAME_PLAYTIME = 'game_playtime'
+}
+
+export interface TutorialCondition {
+  type: TutorialConditionType;
+  target?: PetalType | string;
+  count?: number;
+}
+
+export enum TutorialValidationType {
+  CLICK_ELEMENT = 'click_element',
+  COLLECT_PETAL = 'collect_petal',
+  MOVE_TO_AREA = 'move_to_area',
+  SYNTHESIZE_RECIPE = 'synthesize_recipe',
+  TAP_COUNT = 'tap_count',
+  WAIT_DURATION = 'wait_duration'
+}
+
+export interface TutorialValidation {
+  type: TutorialValidationType;
+  target?: string;
+  count?: number;
+  duration?: number;
+  tolerance?: number;
+}
+
+export interface TutorialSkipConfig {
+  allowed: boolean;
+  skipToStepId?: string;
+  confirmRequired?: boolean;
+  confirmMessage?: string;
+}
+
 export interface TutorialStep {
   id: string;
   title: string;
@@ -340,6 +341,22 @@ export interface TutorialStep {
   highlightElement?: string;
   actionRequired?: 'click' | 'move' | 'collect' | 'synthesize';
   completed: boolean;
+  unlockCondition?: TutorialCondition;
+  validation?: TutorialValidation;
+  skipConfig?: TutorialSkipConfig;
+  isOptional?: boolean;
+  retryOnFail?: boolean;
+  failureMessage?: string;
+  successMessage?: string;
+  delayMs?: number;
+}
+
+export interface TutorialGuideProgress {
+  guideId: string;
+  completedSteps: string[];
+  skippedSteps: string[];
+  startedAt: number;
+  completedAt?: number;
 }
 
 export interface TutorialState {
@@ -347,6 +364,9 @@ export interface TutorialState {
   steps: TutorialStep[];
   completed: boolean;
   dismissed: boolean;
+  activeGuideId?: string;
+  guideProgress: TutorialGuideProgress[];
+  validationAttempts: Record<string, number>;
 }
 
 export interface EfficiencyStats {
@@ -566,6 +586,13 @@ export interface GameEvents {
   'tutorial:next': { step: TutorialStep };
   'tutorial:complete': {};
   'tutorial:reset': {};
+  'tutorial:step_unlocked': { stepId: string; guideId?: string };
+  'tutorial:step_skipped': { stepId: string; skipToStepId?: string; guideId?: string };
+  'tutorial:validation_failed': { stepId: string; attempts: number; message?: string };
+  'tutorial:validation_passed': { stepId: string; guideId?: string };
+  'tutorial:guide_started': { guideId: string };
+  'tutorial:guide_completed': { guideId: string; completedSteps: string[]; skippedSteps: string[] };
+  'tutorial:condition_check': { stepId: string; conditionType: TutorialConditionType; met: boolean };
   'settings:updated': { settings: ControlSettings };
   'synthesis:panel_opened': {};
   'synthesis:button_clicked': {};
