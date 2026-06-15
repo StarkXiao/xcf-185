@@ -189,6 +189,7 @@ export interface GameState {
   redDotState: RedDotState;
   regionHeats: RegionHeat[];
   consecutiveCollect: ConsecutiveCollect | null;
+  dailyRewardState: DailyRewardState;
 }
 
 export interface AudioContextPreferences {
@@ -504,6 +505,24 @@ export interface RedDotState {
   lastViewedCollection: number;
 }
 
+export interface DailyReward {
+  day: number;
+  type: 'petal' | 'multiplier' | 'unlock';
+  petalType?: PetalType;
+  count?: number;
+  multiplier?: number;
+  description: string;
+  icon: string;
+  color: number;
+}
+
+export interface DailyRewardState {
+  lastLoginDate: string;
+  consecutiveDays: number;
+  claimedDays: number[];
+  todayClaimed: boolean;
+}
+
 export interface GameEvents {
   'petal:collected': { 
     type: PetalType; 
@@ -562,4 +581,6 @@ export interface GameEvents {
   'collectionchain:completed': { chain: CollectionTaskChain };
   'collectionchain:claimed': { chain: CollectionTaskChain };
   'reddot:updated': {};
+  'dailylogin:checked': { state: DailyRewardState };
+  'dailyreward:claimed': { reward: DailyReward; day: number };
 }

@@ -10,6 +10,9 @@ export class MenuScene extends Phaser.Scene {
   private savePanel: Phaser.GameObjects.Container | null = null;
   private backupListContainer: Phaser.GameObjects.Container | null = null;
   private audioPanel: Phaser.GameObjects.Container | null = null;
+  private dailyRewardPanel: Phaser.GameObjects.Container | null = null;
+  private goalsPanel: Phaser.GameObjects.Container | null = null;
+  private progressPanel: Phaser.GameObjects.Container | null = null;
 
   constructor() {
     super('Menu');
@@ -23,6 +26,16 @@ export class MenuScene extends Phaser.Scene {
     this.createTitle();
     this.createButtons();
     this.createFloatingPetals();
+
+    const hasSave = SaveManager.getInstance().hasSave();
+    if (hasSave) {
+      SaveManager.getInstance().checkDailyLogin();
+      if (SaveManager.getInstance().canClaimTodayReward()) {
+        this.time.delayedCall(500, () => {
+          this.openDailyRewardPanel();
+        });
+      }
+    }
   }
 
   private createBackground(): void {
@@ -117,14 +130,15 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createButtons(): void {
-    const startY = GAME_HEIGHT * 0.48;
+    const startY = GAME_HEIGHT * 0.45;
     const hasSave = SaveManager.getInstance().hasSave();
+    const btnSpacing = 75;
 
     if (hasSave) {
       this.createButton('继续游戏', startY, () => {
         this.scene.start('Game', { continueGame: true });
       });
-      this.createButton('新的开始', startY + 100, () => {
+      this.createButton('新的开始', startY + btnSpacing, () => {
         SaveManager.getInstance().resetGame();
         this.scene.start('Game', { continueGame: false });
       });
@@ -135,17 +149,40 @@ export class MenuScene extends Phaser.Scene {
       });
     }
 
+    let currentY = startY + btnSpacing * 2;
+
+    if (hasSave) {
+      const canClaim = SaveManager.getInstance().canClaimTodayReward();
+      const dailyBtnText = canClaim ? '🎁 每日签到 (可领取)' : '🎁 每日签到';
+      this.createButton(dailyBtnText, currentY, () => {
+        this.openDailyRewardPanel();
+      }, 0xffaa00);
+      currentY += btnSpacing;
+
+      this.createButton('🎯 阶段目标', currentY, () => {
+        this.openGoalsPanel();
+      }, 0x4a8acf);
+      currentY += btnSpacing;
+
+      this.createButton('📊 最近进度', currentY, () => {
+        this.openProgressPanel();
+      }, 0x4aa85c);
+      currentY += btnSpacing;
+    }
+
     const isMuted = AudioManager.getInstance().isMuted();
-    const muteBtn = this.createButton(isMuted ? '🔇 开启音效' : '🔊 关闭音效', startY + 200, () => {
+    const muteBtn = this.createButton(isMuted ? '🔇 开启音效' : '🔊 关闭音效', currentY, () => {
       const newMuted = AudioManager.getInstance().toggleMute();
       muteBtn.setText(newMuted ? '🔇 开启音效' : '🔊 关闭音效');
     }, 0x666666);
+    currentY += btnSpacing;
 
-    this.createButton('💾 存档管理', startY + 300, () => {
+    this.createButton('💾 存档管理', currentY, () => {
       this.toggleSavePanel();
     }, 0x667788);
+    currentY += btnSpacing;
 
-    this.createButton('🎵 声场设置', startY + 400, () => {
+    this.createButton('🎵 声场设置', currentY, () => {
       this.toggleAudioPanel();
     }, 0x665577);
   }
@@ -796,6 +833,673 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  private openDailyRewardPanel(): void {
+    if (this.dailyRewardPanel) return;
+
+    this.dailyRewardPanel = this.add.container(0, 0).setDepth(200);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.dailyRewardPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🎁 每日签到', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.dailyRewardPanel.add(title);
+
+    const rewardState = SaveManager.getInstance().getDailyRewardState();
+    const subtitle = this.add.text(GAME_WIDTH / 2, 95, 
+      `连续签到 ${rewardState.consecutiveDays} 天`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+    this.dailyRewardPanel.add(subtitle);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeDailyRewardPanel());
+    this.dailyRewardPanel.add(closeBtn);
+
+    this.renderDailyRewards();
+
+    this.dailyRewardPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.dailyRewardPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private renderDailyRewards(): void {
+    if (!this.dailyRewardPanel) return;
+
+    const rewards = SaveManager.getInstance().getDailyRewards();
+    const rewardState = SaveManager.getInstance().getDailyRewardState();
+    const canClaimToday = SaveManager.getInstance().canClaimTodayReward();
+
+    const startY = 140;
+    const itemWidth = 90;
+    const itemHeight = 110;
+    const spacing = 10;
+    const totalWidth = 7 * itemWidth + 6 * spacing;
+    const startX = (GAME_WIDTH - totalWidth) / 2;
+
+    rewards.forEach((reward, index) => {
+      const x = startX + index * (itemWidth + spacing);
+      const day = reward.day;
+      const isClaimed = rewardState.claimedDays.includes(day);
+      const isToday = day === rewardState.consecutiveDays && canClaimToday;
+      const isPast = day < rewardState.consecutiveDays || (day === rewardState.consecutiveDays && rewardState.todayClaimed);
+
+      const itemBg = this.add.graphics();
+      if (isToday) {
+        itemBg.fillStyle(0xffaa00, 0.3);
+      } else if (isPast || isClaimed) {
+        itemBg.fillStyle(0x444444, 0.3);
+      } else {
+        itemBg.fillStyle(0x1a0a2e, 0.6);
+      }
+      itemBg.fillRoundedRect(x, startY, itemWidth, itemHeight, 10);
+      itemBg.lineStyle(2, isToday ? 0xffd700 : (isPast || isClaimed ? 0x666666 : 0x888888), isToday ? 0.8 : 0.4);
+      itemBg.strokeRoundedRect(x, startY, itemWidth, itemHeight, 10);
+      this.dailyRewardPanel!.add(itemBg);
+
+      const dayText = this.add.text(x + itemWidth / 2, startY + 18, `第${day}天`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: isPast || isClaimed ? '#666666' : '#a8e6cf'
+      }).setOrigin(0.5);
+      this.dailyRewardPanel!.add(dayText);
+
+      const iconText = this.add.text(x + itemWidth / 2, startY + 50, reward.icon, {
+        fontFamily: 'Arial',
+        fontSize: '32px'
+      }).setOrigin(0.5);
+      if (isPast || isClaimed) {
+        iconText.setAlpha(0.5);
+      }
+      this.dailyRewardPanel!.add(iconText);
+
+      const descText = this.add.text(x + itemWidth / 2, startY + 82, reward.description, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: isPast || isClaimed ? '#666666' : '#ffffff',
+        align: 'center',
+        wordWrap: { width: itemWidth - 10 }
+      }).setOrigin(0.5);
+      this.dailyRewardPanel!.add(descText);
+
+      if (isClaimed || (day === rewardState.consecutiveDays && rewardState.todayClaimed)) {
+        const claimedText = this.add.text(x + itemWidth / 2, startY + 98, '✓ 已领取', {
+          fontFamily: 'Arial',
+          fontSize: '10px',
+          color: '#4aa85c'
+        }).setOrigin(0.5);
+        this.dailyRewardPanel!.add(claimedText);
+      }
+
+      if (isToday && canClaimToday) {
+        const claimBtn = this.add.graphics();
+        claimBtn.fillStyle(0xffaa00, 0.9);
+        claimBtn.fillRoundedRect(x + 10, startY + 95, itemWidth - 20, 22, 6);
+        this.dailyRewardPanel!.add(claimBtn);
+
+        const claimText = this.add.text(x + itemWidth / 2, startY + 106, '领取', {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: '#ffffff',
+          fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.dailyRewardPanel!.add(claimText);
+
+        const hitZone = this.add.zone(x + itemWidth / 2, startY + 106, itemWidth - 20, 22)
+          .setInteractive({ useHandCursor: true });
+        hitZone.on('pointerup', () => this.handleClaimDailyReward());
+        this.dailyRewardPanel!.add(hitZone);
+
+        this.tweens.add({
+          targets: [claimBtn, claimText],
+          scale: { from: 1, to: 1.05 },
+          duration: 1000,
+          yoyo: true,
+          repeat: -1
+        });
+      }
+    });
+
+    const hintY = startY + itemHeight + 30;
+    const hintText = this.add.text(GAME_WIDTH / 2, hintY, 
+      '💡 连续签到可获得更丰厚的奖励，断签将从第1天重新开始', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#888888',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.dailyRewardPanel.add(hintText);
+  }
+
+  private handleClaimDailyReward(): void {
+    const result = SaveManager.getInstance().claimDailyReward();
+    if (result.success) {
+      AudioManager.getInstance().playSfx('sfx_click');
+      this.showToast(`🎁 ${result.message}`, 2500);
+      this.refreshDailyRewardPanel();
+    } else {
+      this.showToast(`❌ ${result.message}`, 2000);
+    }
+  }
+
+  private refreshDailyRewardPanel(): void {
+    if (!this.dailyRewardPanel) return;
+    const children = this.dailyRewardPanel.getAll();
+    children.forEach(c => c.destroy());
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.dailyRewardPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🎁 每日签到', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.dailyRewardPanel.add(title);
+
+    const rewardState = SaveManager.getInstance().getDailyRewardState();
+    const subtitle = this.add.text(GAME_WIDTH / 2, 95, 
+      `连续签到 ${rewardState.consecutiveDays} 天`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+    this.dailyRewardPanel.add(subtitle);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeDailyRewardPanel());
+    this.dailyRewardPanel.add(closeBtn);
+
+    this.renderDailyRewards();
+  }
+
+  private closeDailyRewardPanel(): void {
+    if (!this.dailyRewardPanel) return;
+
+    this.tweens.add({
+      targets: this.dailyRewardPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.dailyRewardPanel) {
+          this.dailyRewardPanel.destroy();
+          this.dailyRewardPanel = null;
+        }
+      }
+    });
+  }
+
+  private openGoalsPanel(): void {
+    if (this.goalsPanel) return;
+
+    this.goalsPanel = this.add.container(0, 0).setDepth(200);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.goalsPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🎯 阶段目标', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.goalsPanel.add(title);
+
+    const goals = SaveManager.getInstance().getGoals();
+    const completedCount = goals.filter(g => g.status === 'completed' || g.status === 'claimed').length;
+    const subtitle = this.add.text(GAME_WIDTH / 2, 95, 
+      `已完成 ${completedCount} / ${goals.length} 个目标`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#a8e6cf'
+    }).setOrigin(0.5);
+    this.goalsPanel.add(subtitle);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeGoalsPanel());
+    this.goalsPanel.add(closeBtn);
+
+    this.renderGoalsList();
+
+    this.goalsPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.goalsPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private renderGoalsList(): void {
+    if (!this.goalsPanel) return;
+
+    const goals = SaveManager.getInstance().getGoals();
+    const startY = 130;
+    const itemHeight = 75;
+    const itemWidth = GAME_WIDTH - 80;
+    const spacing = 10;
+
+    const activeGoals = goals.filter(g => g.status !== 'claimed');
+    const claimedGoals = goals.filter(g => g.status === 'claimed');
+    const displayGoals = [...activeGoals, ...claimedGoals].slice(0, 8);
+
+    displayGoals.forEach((goal, index) => {
+      const y = startY + index * (itemHeight + spacing);
+      const isCompleted = goal.status === 'completed' || goal.status === 'claimed';
+      const isClaimed = goal.status === 'claimed';
+      const progress = Math.min(goal.currentCount / goal.targetCount, 1);
+
+      const itemBg = this.add.graphics();
+      if (isClaimed) {
+        itemBg.fillStyle(0x333333, 0.4);
+      } else if (isCompleted) {
+        itemBg.fillStyle(0x4aa85c, 0.2);
+      } else {
+        itemBg.fillStyle(0x1a0a2e, 0.8);
+      }
+      itemBg.fillRoundedRect(40, y, itemWidth, itemHeight, 12);
+      itemBg.lineStyle(2, isCompleted ? 0x4aa85c : 0x667788, isCompleted ? 0.6 : 0.3);
+      itemBg.strokeRoundedRect(40, y, itemWidth, itemHeight, 12);
+      this.goalsPanel!.add(itemBg);
+
+      const statusIcon = isClaimed ? '✅' : (isCompleted ? '🎁' : '🎯');
+      const iconText = this.add.text(65, y + itemHeight / 2, statusIcon, {
+        fontFamily: 'Arial',
+        fontSize: '24px'
+      }).setOrigin(0, 0.5);
+      this.goalsPanel!.add(iconText);
+
+      const titleText = this.add.text(105, y + 22, goal.title, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: isClaimed ? '#666666' : '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.goalsPanel!.add(titleText);
+
+      const descText = this.add.text(105, y + 45, goal.description, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: isClaimed ? '#555555' : '#888888'
+      }).setOrigin(0, 0.5);
+      this.goalsPanel!.add(descText);
+
+      const progressBarWidth = 200;
+      const progressBarX = GAME_WIDTH - 60 - progressBarWidth;
+      const progressBarY = y + itemHeight / 2 - 6;
+
+      const progressBg = this.add.graphics();
+      progressBg.fillStyle(0x333333, 0.8);
+      progressBg.fillRoundedRect(progressBarX, progressBarY, progressBarWidth, 12, 6);
+      this.goalsPanel!.add(progressBg);
+
+      const progressFill = this.add.graphics();
+      const fillColor = isClaimed ? 0x666666 : (isCompleted ? 0x4aa85c : 0xffd700);
+      progressFill.fillStyle(fillColor, 0.9);
+      progressFill.fillRoundedRect(progressBarX, progressBarY, progressBarWidth * progress, 12, 6);
+      this.goalsPanel!.add(progressFill);
+
+      const progressText = this.add.text(GAME_WIDTH - 65, y + itemHeight / 2, 
+        `${goal.currentCount}/${goal.targetCount}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: isClaimed ? '#666666' : '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5);
+      this.goalsPanel!.add(progressText);
+
+      if (isCompleted && !isClaimed) {
+        const claimBtn = this.add.graphics();
+        claimBtn.fillStyle(0xffaa00, 0.9);
+        claimBtn.fillRoundedRect(GAME_WIDTH - 130, y + 45, 70, 22, 6);
+        this.goalsPanel!.add(claimBtn);
+
+        const claimText = this.add.text(GAME_WIDTH - 95, y + 56, '领取', {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: '#ffffff',
+          fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.goalsPanel!.add(claimText);
+
+        const hitZone = this.add.zone(GAME_WIDTH - 95, y + 56, 70, 22)
+          .setInteractive({ useHandCursor: true });
+        hitZone.on('pointerup', () => this.handleClaimGoal(goal.id));
+        this.goalsPanel!.add(hitZone);
+      }
+    });
+
+    const hintText = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT - 30,
+      '💡 完成目标可获得丰厚奖励，目标将随游戏进度逐步解锁', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#666666'
+    }).setOrigin(0.5);
+    this.goalsPanel.add(hintText);
+  }
+
+  private handleClaimGoal(goalId: string): void {
+    const state = SaveManager.getInstance().claimGoal(goalId);
+    if (state) {
+      AudioManager.getInstance().playSfx('sfx_click');
+      this.showToast('🎁 目标奖励已领取！', 2000);
+      this.refreshGoalsPanel();
+    }
+  }
+
+  private refreshGoalsPanel(): void {
+    if (!this.goalsPanel) return;
+    const children = this.goalsPanel.getAll();
+    children.forEach(c => c.destroy());
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.goalsPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🎯 阶段目标', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.goalsPanel.add(title);
+
+    const goals = SaveManager.getInstance().getGoals();
+    const completedCount = goals.filter(g => g.status === 'completed' || g.status === 'claimed').length;
+    const subtitle = this.add.text(GAME_WIDTH / 2, 95, 
+      `已完成 ${completedCount} / ${goals.length} 个目标`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#a8e6cf'
+    }).setOrigin(0.5);
+    this.goalsPanel.add(subtitle);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeGoalsPanel());
+    this.goalsPanel.add(closeBtn);
+
+    this.renderGoalsList();
+  }
+
+  private closeGoalsPanel(): void {
+    if (!this.goalsPanel) return;
+
+    this.tweens.add({
+      targets: this.goalsPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.goalsPanel) {
+          this.goalsPanel.destroy();
+          this.goalsPanel = null;
+        }
+      }
+    });
+  }
+
+  private openProgressPanel(): void {
+    if (this.progressPanel) return;
+
+    this.progressPanel = this.add.container(0, 0).setDepth(200);
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.97);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.progressPanel.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '📊 最近进度', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.progressPanel.add(title);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeProgressPanel());
+    this.progressPanel.add(closeBtn);
+
+    this.renderProgressSummary();
+
+    this.progressPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.progressPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private renderProgressSummary(): void {
+    if (!this.progressPanel) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const efficiency = SaveManager.getInstance().calculateEfficiencyStats();
+
+    const startY = 120;
+
+    const stats = [
+      { label: '累计收集', value: state.totalCollected.toString(), icon: '🌸', color: 0xff6b9d },
+      { label: '成功合成', value: state.totalSynthesized.toString(), icon: '⚗️', color: 0xc8a2ff },
+      { label: '变异发现', value: state.totalMutations.toString(), icon: '✨', color: 0xffaa00 },
+      { label: '解锁花瓣', value: state.unlockedPetals.length.toString(), icon: '📖', color: 0xa8e6cf }
+    ];
+
+    const statWidth = 140;
+    const statHeight = 90;
+    const statSpacing = 15;
+    const totalStatsWidth = stats.length * statWidth + (stats.length - 1) * statSpacing;
+    const statsStartX = (GAME_WIDTH - totalStatsWidth) / 2;
+
+    stats.forEach((stat, index) => {
+      const x = statsStartX + index * (statWidth + statSpacing);
+      const y = startY;
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(0x1a0a2e, 0.8);
+      cardBg.fillRoundedRect(x, y, statWidth, statHeight, 12);
+      cardBg.lineStyle(2, stat.color, 0.4);
+      cardBg.strokeRoundedRect(x, y, statWidth, statHeight, 12);
+      this.progressPanel!.add(cardBg);
+
+      const iconText = this.add.text(x + statWidth / 2, y + 28, stat.icon, {
+        fontFamily: 'Arial',
+        fontSize: '24px'
+      }).setOrigin(0.5);
+      this.progressPanel!.add(iconText);
+
+      const valueText = this.add.text(x + statWidth / 2, y + 55, stat.value, {
+        fontFamily: 'Arial',
+        fontSize: '22px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.progressPanel!.add(valueText);
+
+      const labelText = this.add.text(x + statWidth / 2, y + 75, stat.label, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(0.5);
+      this.progressPanel!.add(labelText);
+    });
+
+    const timeY = startY + statHeight + 30;
+    const timeCardWidth = GAME_WIDTH - 80;
+    const timeCardHeight = 60;
+
+    const timeCardBg = this.add.graphics();
+    timeCardBg.fillStyle(0x1a0a2e, 0.8);
+    timeCardBg.fillRoundedRect(40, timeY, timeCardWidth, timeCardHeight, 12);
+    timeCardBg.lineStyle(2, 0x667788, 0.3);
+    timeCardBg.strokeRoundedRect(40, timeY, timeCardWidth, timeCardHeight, 12);
+    this.progressPanel!.add(timeCardBg);
+
+    const playMinutes = Math.floor(state.playTime / 60);
+    const playHours = Math.floor(playMinutes / 60);
+    const playMins = playMinutes % 60;
+    const timeStr = playHours > 0 ? `${playHours}小时${playMins}分钟` : `${playMins}分钟`;
+
+    const timeIcon = this.add.text(65, timeY + timeCardHeight / 2, '⏱️', {
+      fontFamily: 'Arial',
+      fontSize: '24px'
+    }).setOrigin(0, 0.5);
+    this.progressPanel!.add(timeIcon);
+
+    const timeLabel = this.add.text(105, timeY + timeCardHeight / 2 - 10, '游戏时长', {
+      fontFamily: 'Arial',
+      fontSize: '13px',
+      color: '#888888'
+    }).setOrigin(0, 0.5);
+    this.progressPanel!.add(timeLabel);
+
+    const timeValue = this.add.text(105, timeY + timeCardHeight / 2 + 12, timeStr, {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.progressPanel!.add(timeValue);
+
+    const ratingBg = this.add.graphics();
+    ratingBg.fillStyle(efficiency.efficiencyRating === 'S' ? 0xffd700 : 
+                       efficiency.efficiencyRating === 'A' ? 0x4aa85c :
+                       efficiency.efficiencyRating === 'B' ? 0x4a8acf :
+                       efficiency.efficiencyRating === 'C' ? 0xffaa00 : 0x888888, 0.9);
+    ratingBg.fillRoundedRect(GAME_WIDTH - 130, timeY + 12, 80, 36, 8);
+    this.progressPanel!.add(ratingBg);
+
+    const ratingText = this.add.text(GAME_WIDTH - 90, timeY + timeCardHeight / 2, 
+      `效率 ${efficiency.efficiencyRating}`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.progressPanel!.add(ratingText);
+
+    const petalY = timeY + timeCardHeight + 25;
+    const petalTitle = this.add.text(50, petalY, '花瓣收藏', {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.progressPanel!.add(petalTitle);
+
+    const petalTypes = [
+      { type: 'moonlight', name: '月光', color: '#88ccff' },
+      { type: 'starlight', name: '星光', color: '#ffe66d' },
+      { type: 'dew', name: '露珠', color: '#a8e6cf' },
+      { type: 'glowing', name: '荧光', color: '#ff9ecb' },
+      { type: 'dream', name: '梦境', color: '#c8a2ff' },
+      { type: 'eternal', name: '永恒', color: '#ffd700' },
+      { type: 'wakeup', name: '唤醒', color: '#ff6b9d' }
+    ];
+
+    const petalStartY = petalY + 30;
+    const petalItemWidth = 95;
+    const petalItemHeight = 50;
+    const petalSpacing = 8;
+    const petalTotalWidth = petalTypes.length * petalItemWidth + (petalTypes.length - 1) * petalSpacing;
+    const petalStartX = (GAME_WIDTH - petalTotalWidth) / 2;
+
+    petalTypes.forEach((petal, index) => {
+      const x = petalStartX + index * (petalItemWidth + petalSpacing);
+      const y = petalStartY;
+      const count = state.petals[petal.type as keyof typeof state.petals] || 0;
+      const unlocked = state.unlockedPetals.includes(petal.type as any);
+
+      const itemBg = this.add.graphics();
+      itemBg.fillStyle(unlocked ? 0x1a0a2e : 0x222222, unlocked ? 0.8 : 0.5);
+      itemBg.fillRoundedRect(x, y, petalItemWidth, petalItemHeight, 8);
+      itemBg.lineStyle(1.5, unlocked ? parseInt(petal.color.replace('#', ''), 16) : 0x444444, unlocked ? 0.5 : 0.3);
+      itemBg.strokeRoundedRect(x, y, petalItemWidth, petalItemHeight, 8);
+      this.progressPanel!.add(itemBg);
+
+      const nameText = this.add.text(x + petalItemWidth / 2, y + 16, petal.name, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: unlocked ? petal.color : '#555555'
+      }).setOrigin(0.5);
+      this.progressPanel!.add(nameText);
+
+      const countText = this.add.text(x + petalItemWidth / 2, y + 36, 
+        unlocked ? `×${count}` : '未解锁', {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: unlocked ? '#ffffff' : '#444444',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.progressPanel!.add(countText);
+    });
+
+    const lastSaveY = petalStartY + petalItemHeight + 30;
+    const lastSaveDate = new Date(state.lastSaveTime);
+    const lastSaveStr = state.lastSaveTime > 0 
+      ? `${lastSaveDate.toLocaleDateString()} ${lastSaveDate.toLocaleTimeString()}`
+      : '暂无记录';
+
+    const lastSaveText = this.add.text(GAME_WIDTH / 2, lastSaveY, 
+      `💾 上次保存: ${lastSaveStr}`, {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#666666'
+    }).setOrigin(0.5);
+    this.progressPanel!.add(lastSaveText);
+  }
+
+  private closeProgressPanel(): void {
+    if (!this.progressPanel) return;
+
+    this.tweens.add({
+      targets: this.progressPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.progressPanel) {
+          this.progressPanel.destroy();
+          this.progressPanel = null;
+        }
+      }
+    });
+  }
+
   private showToast(message: string, duration: number = 2000): void {
     const toast = this.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, message, {
       fontFamily: 'Arial',
@@ -838,6 +1542,18 @@ export class MenuScene extends Phaser.Scene {
     if (this.audioPanel) {
       this.audioPanel.destroy();
       this.audioPanel = null;
+    }
+    if (this.dailyRewardPanel) {
+      this.dailyRewardPanel.destroy();
+      this.dailyRewardPanel = null;
+    }
+    if (this.goalsPanel) {
+      this.goalsPanel.destroy();
+      this.goalsPanel = null;
+    }
+    if (this.progressPanel) {
+      this.progressPanel.destroy();
+      this.progressPanel = null;
     }
   }
 }

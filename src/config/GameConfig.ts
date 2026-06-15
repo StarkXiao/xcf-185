@@ -17,7 +17,9 @@ import {
   CollectionTaskStatus,
   RedDotState,
   TaskReward,
-  Region
+  Region,
+  DailyReward,
+  DailyRewardState
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -1192,6 +1194,79 @@ export const INITIAL_RED_DOT_STATE: RedDotState = {
   lastViewedCollection: 0
 };
 
+export const DAILY_REWARDS: DailyReward[] = [
+  {
+    day: 1,
+    type: 'petal',
+    petalType: PetalType.MOONLIGHT,
+    count: 10,
+    description: '月光花瓣 ×10',
+    icon: '🌙',
+    color: 0x88ccff
+  },
+  {
+    day: 2,
+    type: 'petal',
+    petalType: PetalType.STARLIGHT,
+    count: 5,
+    description: '星光花瓣 ×5',
+    icon: '⭐',
+    color: 0xffe66d
+  },
+  {
+    day: 3,
+    type: 'petal',
+    petalType: PetalType.DEW,
+    count: 3,
+    description: '露珠花瓣 ×3',
+    icon: '💧',
+    color: 0xa8e6cf
+  },
+  {
+    day: 4,
+    type: 'petal',
+    petalType: PetalType.GLOWING,
+    count: 2,
+    description: '荧光花瓣 ×2',
+    icon: '✨',
+    color: 0xff9ecb
+  },
+  {
+    day: 5,
+    type: 'petal',
+    petalType: PetalType.DREAM,
+    count: 2,
+    description: '梦境花瓣 ×2',
+    icon: '💜',
+    color: 0xc8a2ff
+  },
+  {
+    day: 6,
+    type: 'petal',
+    petalType: PetalType.ETERNAL,
+    count: 1,
+    description: '永恒花瓣 ×1',
+    icon: '👑',
+    color: 0xffd700
+  },
+  {
+    day: 7,
+    type: 'petal',
+    petalType: PetalType.WAKEUP,
+    count: 1,
+    description: '唤醒之花 ×1',
+    icon: '🌸',
+    color: 0xff6b9d
+  }
+];
+
+export const INITIAL_DAILY_REWARD_STATE: DailyRewardState = {
+  lastLoginDate: '',
+  consecutiveDays: 0,
+  claimedDays: [],
+  todayClaimed: false
+};
+
 export const DEFAULT_QUICK_ENTRIES: QuickEntry[] = [
   {
     id: QuickEntryType.SYNTHESIS,
@@ -1272,7 +1347,8 @@ export const INITIAL_GAME_STATE: GameState = {
     lastCollectTime: 0,
     collectCount: 0
   })),
-  consecutiveCollect: null
+  consecutiveCollect: null,
+  dailyRewardState: JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE))
 };
 
 export const INITIAL_TUTORIAL_STATE = {

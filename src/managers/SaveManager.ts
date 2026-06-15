@@ -24,7 +24,9 @@ import {
   SaveBackupData,
   CollectionTask,
   CollectionTaskStatus,
-  CollectionTaskChain
+  CollectionTaskChain,
+  DailyReward,
+  DailyRewardState
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -54,7 +56,9 @@ import {
   AUTO_BACKUP_INTERVAL,
   INITIAL_COLLECTION_TASKS,
   INITIAL_COLLECTION_TASK_CHAINS,
-  INITIAL_RED_DOT_STATE
+  INITIAL_RED_DOT_STATE,
+  DAILY_REWARDS,
+  INITIAL_DAILY_REWARD_STATE
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -1520,6 +1524,12 @@ export class SaveManager {
       fixed = true;
     }
 
+    if (!state.dailyRewardState) {
+      warnings.push('dailyRewardState 数据异常，已重置');
+      state.dailyRewardState = JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE));
+      fixed = true;
+    }
+
     const valid = errors.length === 0;
 
     if (warnings.length > 0 || errors.length > 0) {
@@ -1537,6 +1547,107 @@ export class SaveManager {
       this.saveGame(this.currentSave.gameState);
     }
     return result;
+  }
+
+  // ========== 每日奖励系统 ==========
+
+  private getTodayDateString(): string {
+    const today = new Date();
+    return `${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+  }
+
+  private getYesterdayDateString(): string {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return `${yesterday.getFullYear()}-${yesterday.getMonth() + 1}-${yesterday.getDate()}`;
+  }
+
+  public checkDailyLogin(): DailyRewardState {
+    const state = this.getGameState();
+    const today = this.getTodayDateString();
+    const yesterday = this.getYesterdayDateString();
+
+    if (!state.dailyRewardState) {
+      state.dailyRewardState = JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE));
+    }
+
+    const rewardState = state.dailyRewardState;
+
+    if (rewardState.lastLoginDate === today) {
+      return rewardState;
+    }
+
+    if (rewardState.lastLoginDate === yesterday) {
+      rewardState.consecutiveDays = Math.min(rewardState.consecutiveDays + 1, 7);
+    } else {
+      rewardState.consecutiveDays = 1;
+      rewardState.claimedDays = [];
+    }
+
+    rewardState.lastLoginDate = today;
+    rewardState.todayClaimed = false;
+
+    this.saveGame(state);
+
+    EventManager.getInstance().emit('dailylogin:checked', { state: rewardState });
+
+    return rewardState;
+  }
+
+  public getDailyRewardState(): DailyRewardState {
+    const state = this.getGameState();
+    if (!state.dailyRewardState) {
+      return JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE));
+    }
+    return { ...state.dailyRewardState };
+  }
+
+  public getDailyRewards(): DailyReward[] {
+    return DAILY_REWARDS.map(r => ({ ...r }));
+  }
+
+  public canClaimTodayReward(): boolean {
+    const rewardState = this.getDailyRewardState();
+    const today = this.getTodayDateString();
+    return rewardState.lastLoginDate === today && !rewardState.todayClaimed;
+  }
+
+  public claimDailyReward(): { success: boolean; reward?: DailyReward; message: string } {
+    const state = this.getGameState();
+    const rewardState = state.dailyRewardState;
+    const today = this.getTodayDateString();
+
+    if (!rewardState || rewardState.lastLoginDate !== today || rewardState.todayClaimed) {
+      return { success: false, message: '今日奖励已领取或无法领取' };
+    }
+
+    const dayToClaim = rewardState.consecutiveDays;
+    const reward = DAILY_REWARDS.find(r => r.day === dayToClaim);
+
+    if (!reward) {
+      return { success: false, message: '奖励配置错误' };
+    }
+
+    if (reward.type === 'petal' && reward.petalType && reward.count) {
+      state.petals[reward.petalType] = (state.petals[reward.petalType] || 0) + reward.count;
+      state.totalCollected += reward.count;
+
+      if (!state.unlockedPetals.includes(reward.petalType)) {
+        state.unlockedPetals.push(reward.petalType);
+      }
+    }
+
+    rewardState.todayClaimed = true;
+    if (!rewardState.claimedDays.includes(dayToClaim)) {
+      rewardState.claimedDays.push(dayToClaim);
+    }
+
+    state.dailyRewardState = rewardState;
+    this.saveGame(state);
+
+    EventManager.getInstance().emit('dailyreward:claimed', { reward, day: dayToClaim });
+
+    return { success: true, reward, message: `领取成功：${reward.description}` };
   }
 
   // ========== 备份系统 ==========
