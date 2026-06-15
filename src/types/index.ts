@@ -583,6 +583,8 @@ export interface GameEvents {
   'path:found': { path: Position[] };
   'path:blocked': { target: Position };
   'collectRange:updated': { range: number; level: number };
+  'player:arrived': { x: number; y: number; distanceTraveled: number };
+  'player:moved': { x: number; y: number; displacement: number };
   'tutorial:next': { step: TutorialStep };
   'tutorial:complete': {};
   'tutorial:reset': {};

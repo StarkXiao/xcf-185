@@ -30,6 +30,8 @@ interface ValidationContext {
   areaY?: number;
   tapCount?: number;
   elapsedMs?: number;
+  displacement?: number;
+  distanceTraveled?: number;
 }
 
 export class TutorialSystem {
@@ -139,8 +141,7 @@ export class TutorialSystem {
         return !!context.petalType && (context.petalCount || 0) > 0;
 
       case TutorialValidationType.MOVE_TO_AREA:
-        if (step.targetArea) {
-          if (context.areaX === undefined || context.areaY === undefined) return false;
+        if (step.targetArea && context.areaX !== undefined && context.areaY !== undefined) {
           const area = step.targetArea;
           const tolerance = validation.tolerance || 0;
           return (
@@ -150,7 +151,16 @@ export class TutorialSystem {
             context.areaY <= area.y + area.height + tolerance
           );
         }
-        return true;
+        if (validation.count && context.displacement !== undefined) {
+          return context.displacement >= validation.count;
+        }
+        if (context.displacement !== undefined && context.displacement > 0) {
+          return true;
+        }
+        if (context.distanceTraveled !== undefined && context.distanceTraveled > 0) {
+          return true;
+        }
+        return false;
 
       case TutorialValidationType.SYNTHESIZE_RECIPE:
         if (validation.target && context.recipeId) {
@@ -618,6 +628,48 @@ export class TutorialSystem {
     };
     EventManager.getInstance().on('synthesis:recipe_unlocked', onRecipeUnlockedConditionCheck);
     this.uiListeners.push({ event: 'synthesis:recipe_unlocked', callback: onRecipeUnlockedConditionCheck });
+
+    const onPlayerMoved = (data: { x: number; y: number; displacement: number }) => {
+      if (this.isActive && this.currentStep?.actionRequired === 'move' && this.currentStepUnlocked) {
+        const context: ValidationContext = {
+          areaX: data.x,
+          areaY: data.y,
+          displacement: data.displacement
+        };
+        if (this.currentStep.validation) {
+          if (this.validateInteraction(this.currentStep, context)) {
+            EventManager.getInstance().emit('tutorial:validation_passed', {
+              stepId: this.currentStep.id,
+              guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+            });
+            this.completeCurrentStep();
+          }
+        }
+      }
+    };
+    EventManager.getInstance().on('player:moved', onPlayerMoved);
+    this.uiListeners.push({ event: 'player:moved', callback: onPlayerMoved });
+
+    const onPlayerArrived = (data: { x: number; y: number; distanceTraveled: number }) => {
+      if (this.isActive && this.currentStep?.actionRequired === 'move' && this.currentStepUnlocked) {
+        const context: ValidationContext = {
+          areaX: data.x,
+          areaY: data.y,
+          distanceTraveled: data.distanceTraveled
+        };
+        if (this.validateInteraction(this.currentStep, context)) {
+          EventManager.getInstance().emit('tutorial:validation_passed', {
+            stepId: this.currentStep.id,
+            guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+          });
+          this.completeCurrentStep();
+        } else if (this.currentStep.validation) {
+          this.handleValidationFailure(this.currentStep);
+        }
+      }
+    };
+    EventManager.getInstance().on('player:arrived', onPlayerArrived);
+    this.uiListeners.push({ event: 'player:arrived', callback: onPlayerArrived });
   }
 
   private recheckUnlockConditions(): void {
@@ -1164,13 +1216,14 @@ export class TutorialSystem {
     SettingsManager.getInstance().completeTutorialStep(this.currentStep.id);
   }
 
-  public notifyPlayerMoved(x?: number, y?: number): void {
+  public notifyPlayerArrived(x: number, y: number, distanceTraveled: number): void {
     if (!this.isActive || !this.currentStep) return;
 
     if (this.currentStep.actionRequired === 'move' && this.currentStepUnlocked) {
       const context: ValidationContext = {
         areaX: x,
-        areaY: y
+        areaY: y,
+        distanceTraveled
       };
       if (this.currentStep.validation) {
         if (this.validateInteraction(this.currentStep, context)) {

@@ -35,6 +35,11 @@ export class PlayerController {
   private currentPathIndex = 0;
   private pathPreviewGraphics: Phaser.GameObjects.Graphics | null = null;
   private targetIndicator: Phaser.GameObjects.Graphics | null = null;
+  private movementStartX = 0;
+  private movementStartY = 0;
+  private lastReportedX = 0;
+  private lastReportedY = 0;
+  private minDisplacementToReport = 15;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -59,6 +64,11 @@ export class PlayerController {
     
     this.collectRangeSystem.create();
     this.tutorialSystem.create();
+    
+    this.movementStartX = startX;
+    this.movementStartY = startY;
+    this.lastReportedX = startX;
+    this.lastReportedY = startY;
     
     this.setupInput();
     this.setupCamera();
@@ -171,13 +181,14 @@ export class PlayerController {
         this.startJoystick(pointer);
       } else if (this.controlSettings.autoPathEnabled) {
         this.currentPath = [];
+        this.recordMovementStart();
         this.findPath(pointer.worldX, pointer.worldY);
       } else {
         this.currentPath = [];
+        this.recordMovementStart();
         this.moveTargetX = pointer.worldX;
         this.moveTargetY = pointer.worldY;
         this.isMoving = true;
-        this.tutorialSystem.notifyPlayerMoved();
       }
     });
 
@@ -217,6 +228,10 @@ export class PlayerController {
   private updateJoystick(pointer: Phaser.Input.Pointer): void {
     if (!this.joystickBase || !this.joystickKnob || !this.joystickGraphics || !this.player) return;
 
+    if (!this.isMoving && this.currentPath.length === 0) {
+      this.recordMovementStart();
+    }
+
     const dx = pointer.x - this.touchStartX;
     const dy = pointer.y - this.touchStartY;
     const distance = Math.min(Math.sqrt(dx * dx + dy * dy), 60);
@@ -236,6 +251,7 @@ export class PlayerController {
     const velocityY = Math.sin(angle) * PLAYER_SPEED * normalizedDistance;
 
     this.player.setVelocity(velocityX, velocityY);
+    this.checkMovementProgress();
   }
 
   private setupCamera(): void {
@@ -265,6 +281,54 @@ export class PlayerController {
 
   private createTargetIndicator(): void {
     this.targetIndicator = this.scene.add.graphics().setDepth(16);
+  }
+
+  private recordMovementStart(): void {
+    if (this.player) {
+      this.movementStartX = this.player.x;
+      this.movementStartY = this.player.y;
+      this.lastReportedX = this.player.x;
+      this.lastReportedY = this.player.y;
+    }
+  }
+
+  private checkMovementProgress(): void {
+    if (!this.player) return;
+
+    const dxSinceLastReport = this.player.x - this.lastReportedX;
+    const dySinceLastReport = this.player.y - this.lastReportedY;
+    const distSinceLastReport = Math.sqrt(dxSinceLastReport * dxSinceLastReport + dySinceLastReport * dySinceLastReport);
+
+    if (distSinceLastReport >= this.minDisplacementToReport) {
+      const totalDx = this.player.x - this.movementStartX;
+      const totalDy = this.player.y - this.movementStartY;
+      const totalDisplacement = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+
+      EventManager.getInstance().emit('player:moved', {
+        x: this.player.x,
+        y: this.player.y,
+        displacement: totalDisplacement
+      });
+
+      this.lastReportedX = this.player.x;
+      this.lastReportedY = this.player.y;
+    }
+  }
+
+  private notifyArrived(): void {
+    if (!this.player) return;
+
+    const dx = this.player.x - this.movementStartX;
+    const dy = this.player.y - this.movementStartY;
+    const distanceTraveled = Math.sqrt(dx * dx + dy * dy);
+
+    EventManager.getInstance().emit('player:arrived', {
+      x: this.player.x,
+      y: this.player.y,
+      distanceTraveled
+    });
+
+    this.tutorialSystem.notifyPlayerArrived(this.player.x, this.player.y, distanceTraveled);
   }
 
   private updatePathPreview(): void {
@@ -389,8 +453,12 @@ export class PlayerController {
     }
 
     if (velocityX !== 0 || velocityY !== 0) {
+      if (!this.isMoving) {
+        this.recordMovementStart();
+      }
       this.isMoving = false;
       this.player.setVelocity(velocityX, velocityY);
+      this.checkMovementProgress();
     }
   }
 
@@ -400,6 +468,7 @@ export class PlayerController {
       this.currentPath = [];
       this.isMoving = false;
       this.player.setVelocity(0, 0);
+      this.notifyArrived();
       return;
     }
 
@@ -414,6 +483,7 @@ export class PlayerController {
         this.currentPath = [];
         this.isMoving = false;
         this.player.setVelocity(0, 0);
+        this.notifyArrived();
       }
       return;
     }
@@ -436,6 +506,7 @@ export class PlayerController {
     const velocityX = (newPos.x - this.player.x) * (1000 / delta);
     const velocityY = (newPos.y - this.player.y) * (1000 / delta);
     this.player.setVelocity(velocityX, velocityY);
+    this.checkMovementProgress();
   }
 
   private handlePointMove(): void {
@@ -449,6 +520,7 @@ export class PlayerController {
     if (distance < 5) {
       this.isMoving = false;
       this.player.setVelocity(0, 0);
+      this.notifyArrived();
       return;
     }
 
@@ -470,7 +542,6 @@ export class PlayerController {
         this.currentPath = path;
         this.currentPathIndex = 1;
         this.isMoving = true;
-        this.tutorialSystem.notifyPlayerMoved();
         EventManager.getInstance().emit('path:found', { path });
       } else {
         this.currentPath = [];

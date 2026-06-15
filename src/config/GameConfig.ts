@@ -179,7 +179,8 @@ export const TUTORIAL_STEPS = [
     actionRequired: 'move' as const,
     completed: false,
     validation: {
-      type: TutorialValidationType.MOVE_TO_AREA
+      type: TutorialValidationType.MOVE_TO_AREA,
+      count: 20
     },
     skipConfig: {
       allowed: true,
@@ -187,7 +188,7 @@ export const TUTORIAL_STEPS = [
       confirmMessage: '跳过移动教学？后续可随时点击移动'
     },
     retryOnFail: true,
-    failureMessage: '请点击屏幕任意位置移动角色',
+    failureMessage: '请点击屏幕让角色移动至少一段距离',
     successMessage: '✅ 移动成功！'
   },
   {
