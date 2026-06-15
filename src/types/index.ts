@@ -195,6 +195,7 @@ export interface GameState {
   environment: EnvironmentState;
   environmentStats: EnvironmentStats;
   rareDropEvents: RareDropEvent[];
+  visitorSystem: VisitorSystemState;
 }
 
 export interface AudioContextPreferences {
@@ -672,6 +673,119 @@ export interface DailyRewardState {
   todayClaimed: boolean;
 }
 
+export enum VisitorSpriteId {
+  LUNA = 'luna',
+  EMBER = 'ember',
+  RIVER = 'river',
+  FLORA = 'flora',
+  AURORA = 'aurora',
+  SHADOW = 'shadow'
+}
+
+export enum VisitorOrderStatus {
+  PENDING = 'pending',
+  FULFILLED = 'fulfilled',
+  EXPIRED = 'expired'
+}
+
+export enum AffectionLevel {
+  STRANGER = 0,
+  ACQUAINTANCE = 1,
+  FRIEND = 2,
+  CLOSE_FRIEND = 3,
+  CONFIDANT = 4,
+  SOULMATE = 5
+}
+
+export interface VisitorSpriteConfig {
+  id: VisitorSpriteId;
+  name: string;
+  title: string;
+  description: string;
+  appearance: string;
+  personality: string;
+  color: number;
+  glowColor: number;
+  preferredPetals: PetalType[];
+  dislikedPetals: PetalType[];
+  visitWeight: number;
+  minPlayTime: number;
+  orderCooldown: number;
+  affectionThresholds: number[];
+  levelTitles: string[];
+  dialogue: {
+    greet: string[];
+    happy: string[];
+    neutral: string[];
+    dislike: string[];
+    affectionUp: string[];
+    orderPlace: string[];
+    orderFulfill: string[];
+    reward: string[];
+  };
+}
+
+export interface VisitorOrder {
+  id: string;
+  spriteId: VisitorSpriteId;
+  petals: { type: PetalType; count: number }[];
+  bonusPetals?: { type: PetalType; count: number }[];
+  timeLimit: number;
+  placedAt: number;
+  status: VisitorOrderStatus;
+  affectionReward: number;
+  isPreferred: boolean;
+}
+
+export interface VisitorReward {
+  id: string;
+  spriteId: VisitorSpriteId;
+  affectionLevel: AffectionLevel;
+  type: 'petal' | 'recipe' | 'efficiency' | 'cosmetic';
+  petalType?: PetalType;
+  count?: number;
+  recipeId?: string;
+  efficiencyBoost?: number;
+  description: string;
+  icon: string;
+  claimed: boolean;
+}
+
+export interface VisitorSpriteState {
+  spriteId: VisitorSpriteId;
+  affection: number;
+  level: AffectionLevel;
+  totalVisits: number;
+  totalOrdersPlaced: number;
+  totalOrdersFulfilled: number;
+  totalOrdersExpired: number;
+  lastVisitTime: number;
+  lastOrderTime: number;
+  unlocked: boolean;
+  rewards: VisitorReward[];
+  discoveredPreferences: PetalType[];
+  discoveredDislikes: PetalType[];
+}
+
+export interface VisitorSystemState {
+  sprites: VisitorSpriteState[];
+  activeVisitor: VisitorSpriteId | null;
+  activeOrder: VisitorOrder | null;
+  visitorArrivedAt: number;
+  nextVisitTime: number;
+  visitDuration: number;
+  totalVisitorInteractions: number;
+  completedSpriteCount: number;
+}
+
+export interface VisitorInteractionRecord {
+  spriteId: VisitorSpriteId;
+  timestamp: number;
+  type: 'visit' | 'order_placed' | 'order_fulfilled' | 'order_expired' | 'reward_claimed' | 'affection_up';
+  affectionChange: number;
+  details?: string;
+}
+
 export interface GameEvents {
   'petal:collected': { 
     type: PetalType; 
@@ -756,4 +870,14 @@ export interface GameEvents {
   'raredrop:spawned': { event: RareDropEvent; x: number; y: number };
   'raredrop:collected': { event: RareDropEvent; type: PetalType };
   'season:changed': { oldSeason: SeasonType; newSeason: SeasonType };
+  'visitor:arrived': { spriteId: VisitorSpriteId; isReturning: boolean };
+  'visitor:left': { spriteId: VisitorSpriteId };
+  'visitor:order_placed': { order: VisitorOrder };
+  'visitor:order_fulfilled': { order: VisitorOrder; spriteId: VisitorSpriteId; affectionGain: number };
+  'visitor:order_expired': { order: VisitorOrder; spriteId: VisitorSpriteId };
+  'visitor:affection_up': { spriteId: VisitorSpriteId; oldLevel: AffectionLevel; newLevel: AffectionLevel; affection: number };
+  'visitor:reward_unlocked': { spriteId: VisitorSpriteId; reward: VisitorReward };
+  'visitor:reward_claimed': { spriteId: VisitorSpriteId; reward: VisitorReward };
+  'visitor:preference_discovered': { spriteId: VisitorSpriteId; petalType: PetalType; isPreference: boolean };
+  'visitor:panel_opened': {};
 }

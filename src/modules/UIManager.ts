@@ -17,19 +17,28 @@ import {
   AudioContextType,
   CollectionTask,
   CollectionTaskStatus,
-  CollectionTaskChain
+  CollectionTaskChain,
+  VisitorSpriteId,
+  VisitorSpriteConfig,
+  VisitorSpriteState,
+  VisitorOrder,
+  VisitorOrderStatus,
+  AffectionLevel,
+  VisitorReward
 } from '../types';
 import { 
   PETAL_CONFIGS, 
   SYNTHESIS_RECIPES,
   GAME_WIDTH, 
   GAME_HEIGHT,
-  DEFAULT_QUICK_ENTRIES
+  DEFAULT_QUICK_ENTRIES,
+  VISITOR_SPRITE_CONFIGS
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
 import { SettingsManager } from '../managers/SettingsManager';
 import { SynthesisSystem } from './SynthesisSystem';
+import { VisitorSpriteSystem } from './VisitorSpriteSystem';
 import { AudioManager } from '../managers/AudioManager';
 
 type CollectionCategory = 'normal' | 'mutation' | 'failed';
@@ -63,10 +72,13 @@ export class UIManager {
   private miniTrendContainer: Phaser.GameObjects.Container | null = null;
   private settingsPanel: Phaser.GameObjects.Container | null = null;
   private currentSettingsTab: SettingsTabType = 'controls';
+  private visitorSpriteSystem: VisitorSpriteSystem;
+  private visitorPanel: Phaser.GameObjects.Container | null = null;
 
-  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem) {
+  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem, visitorSpriteSystem: VisitorSpriteSystem) {
     this.scene = scene;
     this.synthesisSystem = synthesisSystem;
+    this.visitorSpriteSystem = visitorSpriteSystem;
   }
 
   public create(): void {
@@ -108,6 +120,7 @@ export class UIManager {
     this.createMuteButton();
     this.createProgressUI();
     this.createInfoCenterButton();
+    this.createVisitorButton();
     this.createMiniGoalDisplay();
     this.createMiniTrendDisplay();
     this.createStatusContainer();
@@ -365,6 +378,419 @@ export class UIManager {
     const items: Phaser.GameObjects.GameObject[] = [btnBg, btnText, button];
     if (badgeText) items.push(badgeText);
     this.container.add(items);
+  }
+
+  private visitorButtonRedDot: Phaser.GameObjects.Graphics | null = null;
+
+  private createVisitorButton(): void {
+    if (!this.container) return;
+
+    const btnX = 55;
+    const btnY = 215;
+
+    const btnBg = this.scene.add.graphics();
+    btnBg.fillStyle(0xffaa00, 0.8);
+    btnBg.fillCircle(btnX, btnY, 28);
+
+    btnBg.lineStyle(2, 0xffffff, 0.5);
+    btnBg.strokeCircle(btnX, btnY, 28);
+
+    const btnText = this.scene.add.text(btnX, btnY, '🧚', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const state = SaveManager.getInstance().getGameState();
+    const hasActiveVisitor = state.visitorSystem.activeVisitor !== null;
+    const hasClaimableReward = state.visitorSystem.sprites.some(s =>
+      s.rewards.some(r => !r.claimed && r.affectionLevel <= s.level)
+    );
+
+    this.visitorButtonRedDot = this.scene.add.graphics();
+    this.visitorButtonRedDot.fillStyle(0xff4444, 1);
+    this.visitorButtonRedDot.fillCircle(btnX + 22, btnY - 20, 8);
+    this.visitorButtonRedDot.setVisible(hasActiveVisitor || hasClaimableReward);
+
+    const button = this.scene.add.zone(btnX, btnY, 56, 56)
+      .setInteractive({ useHandCursor: true });
+
+    button.on('pointerdown', () => btnBg.setScale(0.9));
+    button.on('pointerup', () => {
+      btnBg.setScale(1);
+      this.toggleVisitorPanel();
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+    });
+    button.on('pointerout', () => btnBg.setScale(1));
+
+    this.container.add([btnBg, btnText, button, this.visitorButtonRedDot]);
+  }
+
+  private updateVisitorRedDot(): void {
+    if (!this.visitorButtonRedDot) return;
+    const state = SaveManager.getInstance().getGameState();
+    const hasActiveVisitor = state.visitorSystem.activeVisitor !== null;
+    const hasClaimableReward = state.visitorSystem.sprites.some(s =>
+      s.rewards.some(r => !r.claimed && r.affectionLevel <= s.level)
+    );
+    this.visitorButtonRedDot.setVisible(hasActiveVisitor || hasClaimableReward);
+  }
+
+  private toggleVisitorPanel(): void {
+    if (this.visitorPanel) {
+      this.closeVisitorPanel();
+    } else {
+      this.openVisitorPanel();
+    }
+  }
+
+  private openVisitorPanel(): void {
+    if (!this.container) return;
+
+    this.visitorPanel = this.scene.add.container(0, 0).setDepth(150).setScrollFactor(0);
+
+    const panelBg = this.scene.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.95);
+    panelBg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this.visitorPanel.add(panelBg);
+
+    const title = this.scene.add.text(GAME_WIDTH / 2, 90, '🧚 访客精灵', {
+      fontFamily: 'Arial',
+      fontSize: '30px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.visitorPanel.add(title);
+
+    const visitorState = SaveManager.getInstance().getGameState().visitorSystem;
+
+    if (visitorState.activeVisitor) {
+      this.renderActiveVisitorSection(visitorState);
+    }
+
+    if (visitorState.activeOrder && visitorState.activeOrder.status === VisitorOrderStatus.PENDING) {
+      this.renderActiveOrderSection(visitorState.activeOrder);
+    }
+
+    this.renderSpriteList(visitorState);
+
+    const closeBtn = this.scene.add.text(GAME_WIDTH - 70, 75, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '30px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    closeBtn.on('pointerup', () => this.closeVisitorPanel());
+    this.visitorPanel.add(closeBtn);
+
+    this.visitorPanel.setAlpha(0);
+    this.scene.tweens.add({
+      targets: this.visitorPanel,
+      alpha: 1,
+      duration: 300
+    });
+
+    this.container.add(this.visitorPanel);
+  }
+
+  private renderActiveVisitorSection(visitorState: import('../types').VisitorSystemState): void {
+    if (!this.visitorPanel) return;
+
+    const spriteId = visitorState.activeVisitor!;
+    const config = VISITOR_SPRITE_CONFIGS[spriteId];
+    const spriteState = visitorState.sprites.find(s => s.spriteId === spriteId);
+    if (!spriteState) return;
+
+    const sectionY = 140;
+
+    const sectionBg = this.scene.add.graphics();
+    sectionBg.fillStyle(config.color, 0.15);
+    sectionBg.fillRoundedRect(30, sectionY, GAME_WIDTH - 60, 100, 15);
+    sectionBg.lineStyle(2, config.color, 0.6);
+    sectionBg.strokeRoundedRect(30, sectionY, GAME_WIDTH - 60, 100, 15);
+    this.visitorPanel.add(sectionBg);
+
+    const icon = this.scene.add.text(70, sectionY + 30, config.appearance, {
+      fontFamily: 'Arial',
+      fontSize: '36px'
+    }).setOrigin(0, 0.5);
+    this.visitorPanel.add(icon);
+
+    const nameText = this.scene.add.text(120, sectionY + 20, config.name, {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0, 0.5);
+    this.visitorPanel.add(nameText);
+
+    const levelTitle = config.levelTitles[spriteState.level] || '陌生人';
+    const levelText = this.scene.add.text(120, sectionY + 50, `${levelTitle} | 好感 ${spriteState.affection}`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: `#${config.color.toString(16).padStart(6, '0')}`,
+    }).setOrigin(0, 0.5);
+    this.visitorPanel.add(levelText);
+
+    const affectionBarWidth = 200;
+    const affectionBarX = 120;
+    const affectionBarY = sectionY + 75;
+    const nextThreshold = config.affectionThresholds[spriteState.level + 1] || config.affectionThresholds[config.affectionThresholds.length - 1];
+    const prevThreshold = config.affectionThresholds[spriteState.level];
+    const progress = Math.min(1, (spriteState.affection - prevThreshold) / Math.max(1, nextThreshold - prevThreshold));
+
+    const barBg = this.scene.add.graphics();
+    barBg.fillStyle(0x333333, 0.8);
+    barBg.fillRoundedRect(affectionBarX, affectionBarY, affectionBarWidth, 8, 4);
+    barBg.fillStyle(config.color, 0.9);
+    barBg.fillRoundedRect(affectionBarX, affectionBarY, affectionBarWidth * progress, 8, 4);
+    this.visitorPanel.add(barBg);
+
+    const timeRemaining = this.visitorSpriteSystem.getVisitorTimeRemaining();
+    const timeText = this.scene.add.text(GAME_WIDTH - 50, sectionY + 50, `${Math.ceil(timeRemaining / 1000)}s`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ffaa00',
+      align: 'right'
+    }).setOrigin(1, 0.5);
+    this.visitorPanel.add(timeText);
+  }
+
+  private renderActiveOrderSection(order: VisitorOrder): void {
+    if (!this.visitorPanel) return;
+
+    const config = VISITOR_SPRITE_CONFIGS[order.spriteId];
+    const sectionY = 260;
+
+    const sectionBg = this.scene.add.graphics();
+    sectionBg.fillStyle(0x1a0a2e, 0.9);
+    sectionBg.fillRoundedRect(30, sectionY, GAME_WIDTH - 60, 130, 15);
+    sectionBg.lineStyle(2, 0xffaa00, 0.6);
+    sectionBg.strokeRoundedRect(30, sectionY, GAME_WIDTH - 60, 130, 15);
+    this.visitorPanel.add(sectionBg);
+
+    const orderTitle = this.scene.add.text(GAME_WIDTH / 2, sectionY + 20, '📋 当前订单', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffaa00',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.visitorPanel.add(orderTitle);
+
+    let petalX = 60;
+    order.petals.forEach((petal, idx) => {
+      const state = SaveManager.getInstance().getGameState();
+      const hasEnough = (state.petals[petal.type] || 0) >= petal.count;
+      const petalConfig = PETAL_CONFIGS[petal.type];
+
+      const petalIcon = this.scene.add.image(petalX, sectionY + 60, `petal_${petal.type}`)
+        .setDisplaySize(36, 36)
+        .setAlpha(hasEnough ? 1 : 0.4);
+      this.visitorPanel!.add(petalIcon);
+
+      const countText = this.scene.add.text(petalX, sectionY + 90, `${state.petals[petal.type] || 0}/${petal.count}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: hasEnough ? '#a8e6cf' : '#ff6b6b',
+        align: 'center'
+      }).setOrigin(0.5);
+      this.visitorPanel!.add(countText);
+
+      if (idx < order.petals.length - 1) {
+        const plus = this.scene.add.text(petalX + 35, sectionY + 60, '+', {
+          fontFamily: 'Arial',
+          fontSize: '16px',
+          color: '#ffffff'
+        }).setOrigin(0.5);
+        this.visitorPanel!.add(plus);
+      }
+      petalX += 75;
+    });
+
+    const timeRemaining = this.visitorSpriteSystem.getOrderTimeRemaining();
+    const timeText = this.scene.add.text(GAME_WIDTH - 50, sectionY + 20, `${Math.ceil(timeRemaining / 1000)}s`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#ff6666',
+      align: 'right'
+    }).setOrigin(1, 0.5);
+    this.visitorPanel.add(timeText);
+
+    const canFulfill = this.visitorSpriteSystem.canFulfillOrder();
+    if (canFulfill) {
+      const fulfillBtnBg = this.scene.add.graphics();
+      fulfillBtnBg.fillStyle(0xff6b9d, 0.85);
+      fulfillBtnBg.fillRoundedRect(GAME_WIDTH / 2 - 60, sectionY + 95, 120, 30, 10);
+
+      const fulfillBtnText = this.scene.add.text(GAME_WIDTH / 2, sectionY + 110, '交付订单', {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: '#ffffff',
+        align: 'center'
+      }).setOrigin(0.5);
+
+      const fulfillZone = this.scene.add.zone(GAME_WIDTH / 2, sectionY + 110, 120, 30)
+        .setInteractive({ useHandCursor: true });
+
+      fulfillZone.on('pointerup', () => {
+        if (this.visitorSpriteSystem.fulfillOrder()) {
+          this.closeVisitorPanel();
+          this.showToast('订单交付成功！好感度提升！', 3000, 0xffaa00);
+        }
+      });
+
+      this.visitorPanel.add([fulfillBtnBg, fulfillBtnText, fulfillZone]);
+    }
+  }
+
+  private renderSpriteList(visitorState: import('../types').VisitorSystemState): void {
+    if (!this.visitorPanel) return;
+
+    const startY = visitorState.activeVisitor ? (visitorState.activeOrder ? 410 : 280) : 140;
+
+    const listTitle = this.scene.add.text(GAME_WIDTH / 2, startY, '精灵图鉴', {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+    this.visitorPanel.add(listTitle);
+
+    const unlockedSprites = visitorState.sprites.filter(s => s.unlocked);
+    const lockedSprites = visitorState.sprites.filter(s => !s.unlocked);
+
+    let currentY = startY + 40;
+
+    unlockedSprites.forEach((spriteState, idx) => {
+      const config = VISITOR_SPRITE_CONFIGS[spriteState.spriteId];
+      const cardY = currentY + idx * 110;
+
+      const cardBg = this.scene.add.graphics();
+      cardBg.fillStyle(0x1a0a2e, 0.9);
+      cardBg.fillRoundedRect(30, cardY, GAME_WIDTH - 60, 95, 12);
+      cardBg.lineStyle(2, config.color, 0.5);
+      cardBg.strokeRoundedRect(30, cardY, GAME_WIDTH - 60, 95, 12);
+      this.visitorPanel.add(cardBg);
+
+      const icon = this.scene.add.text(65, cardY + 30, config.appearance, {
+        fontFamily: 'Arial',
+        fontSize: '28px'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(icon);
+
+      const name = this.scene.add.text(100, cardY + 18, config.name, {
+        fontFamily: 'Arial',
+        fontSize: '17px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(name);
+
+      const levelTitle = config.levelTitles[spriteState.level];
+      const levelText = this.scene.add.text(100, cardY + 42, `${levelTitle} | 好感: ${spriteState.affection}`, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: `#${config.color.toString(16).padStart(6, '0')}`
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(levelText);
+
+      const visitText = this.scene.add.text(100, cardY + 62, `来访${spriteState.totalVisits}次 | 完成${spriteState.totalOrdersFulfilled}单`, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(visitText);
+
+      const claimableRewards = spriteState.rewards.filter(r => !r.claimed && r.affectionLevel <= spriteState.level);
+      if (claimableRewards.length > 0) {
+        const claimBtnBg = this.scene.add.graphics();
+        claimBtnBg.fillStyle(0xff6b9d, 0.85);
+        claimBtnBg.fillRoundedRect(GAME_WIDTH - 140, cardY + 25, 90, 35, 10);
+
+        const claimBtnText = this.scene.add.text(GAME_WIDTH - 95, cardY + 42, '领取', {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: '#ffffff',
+          align: 'center'
+        }).setOrigin(0.5);
+
+        const claimZone = this.scene.add.zone(GAME_WIDTH - 95, cardY + 42, 90, 35)
+          .setInteractive({ useHandCursor: true });
+
+        claimZone.on('pointerup', () => {
+          claimableRewards.forEach(reward => {
+            this.visitorSpriteSystem.claimReward(spriteState.spriteId, reward.id);
+          });
+          this.closeVisitorPanel();
+          this.showToast('奖励已领取！', 2500, 0xa8e6cf);
+        });
+
+        this.visitorPanel.add([claimBtnBg, claimBtnText, claimZone]);
+      }
+
+      if (spriteState.discoveredPreferences.length > 0) {
+        const prefLabels = spriteState.discoveredPreferences.map(p => PETAL_CONFIGS[p].name).join('、');
+        const prefText = this.scene.add.text(100, cardY + 80, `喜欢: ${prefLabels}`, {
+          fontFamily: 'Arial',
+          fontSize: '10px',
+          color: '#a8e6cf'
+        }).setOrigin(0, 0.5);
+        this.visitorPanel.add(prefText);
+      }
+    });
+
+    currentY += unlockedSprites.length * 110;
+
+    lockedSprites.forEach((spriteState, idx) => {
+      const cardY = currentY + idx * 60;
+      const config = VISITOR_SPRITE_CONFIGS[spriteState.spriteId];
+
+      const cardBg = this.scene.add.graphics();
+      cardBg.fillStyle(0x0a0a0a, 0.7);
+      cardBg.fillRoundedRect(30, cardY, GAME_WIDTH - 60, 50, 12);
+      cardBg.lineStyle(2, 0x333333, 0.5);
+      cardBg.strokeRoundedRect(30, cardY, GAME_WIDTH - 60, 50, 12);
+      this.visitorPanel.add(cardBg);
+
+      const icon = this.scene.add.text(65, cardY + 25, '❓', {
+        fontFamily: 'Arial',
+        fontSize: '22px'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(icon);
+
+      const name = this.scene.add.text(100, cardY + 18, '???', {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: '#666666'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(name);
+
+      const hint = this.scene.add.text(100, cardY + 36, `游戏${config.minPlayTime}秒后解锁`, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: '#444444'
+      }).setOrigin(0, 0.5);
+      this.visitorPanel.add(hint);
+    });
+  }
+
+  private closeVisitorPanel(): void {
+    if (!this.visitorPanel || !this.container) return;
+
+    this.scene.tweens.add({
+      targets: this.visitorPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.visitorPanel) {
+          this.container!.remove(this.visitorPanel);
+          this.visitorPanel.destroy();
+          this.visitorPanel = null;
+        }
+      }
+    });
   }
 
   private createProgressUI(): void {
@@ -822,6 +1248,42 @@ export class UIManager {
     };
     EventManager.getInstance().on('collectiontask:completed', onCollectionTaskCompleted);
     this.uiListeners.push({ event: 'collectiontask:completed', callback: onCollectionTaskCompleted });
+
+    const onVisitorArrived = (_data: GameEvents['visitor:arrived']) => {
+      this.updateVisitorRedDot();
+    };
+    EventManager.getInstance().on('visitor:arrived', onVisitorArrived);
+    this.uiListeners.push({ event: 'visitor:arrived', callback: onVisitorArrived });
+
+    const onVisitorLeft = (_data: GameEvents['visitor:left']) => {
+      this.updateVisitorRedDot();
+    };
+    EventManager.getInstance().on('visitor:left', onVisitorLeft);
+    this.uiListeners.push({ event: 'visitor:left', callback: onVisitorLeft });
+
+    const onVisitorOrderFulfilled = (_data: GameEvents['visitor:order_fulfilled']) => {
+      this.updateVisitorRedDot();
+    };
+    EventManager.getInstance().on('visitor:order_fulfilled', onVisitorOrderFulfilled);
+    this.uiListeners.push({ event: 'visitor:order_fulfilled', callback: onVisitorOrderFulfilled });
+
+    const onVisitorRewardUnlocked = (_data: GameEvents['visitor:reward_unlocked']) => {
+      this.updateVisitorRedDot();
+    };
+    EventManager.getInstance().on('visitor:reward_unlocked', onVisitorRewardUnlocked);
+    this.uiListeners.push({ event: 'visitor:reward_unlocked', callback: onVisitorRewardUnlocked });
+
+    const onVisitorRewardClaimed = (_data: GameEvents['visitor:reward_claimed']) => {
+      this.updateVisitorRedDot();
+    };
+    EventManager.getInstance().on('visitor:reward_claimed', onVisitorRewardClaimed);
+    this.uiListeners.push({ event: 'visitor:reward_claimed', callback: onVisitorRewardClaimed });
+
+    const onVisitorPanelOpened = (_data: GameEvents['visitor:panel_opened']) => {
+      this.openVisitorPanel();
+    };
+    EventManager.getInstance().on('visitor:panel_opened', onVisitorPanelOpened);
+    this.uiListeners.push({ event: 'visitor:panel_opened', callback: onVisitorPanelOpened });
   }
 
   private showToast(message: string, duration: number = 2000, color: number = 0xffffff): void {

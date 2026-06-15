@@ -67,7 +67,8 @@ import {
   INITIAL_DAILY_REWARD_STATE,
   INITIAL_ENVIRONMENT,
   INITIAL_ENVIRONMENT_STATS,
-  RARE_DROP_EVENTS
+  RARE_DROP_EVENTS,
+  INITIAL_VISITOR_SYSTEM_STATE
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -106,10 +107,11 @@ export class SaveManager {
     this.migrationMap.set('4.0.0', this.migrateFrom4_0_0.bind(this));
     this.migrationMap.set('4.1.0', this.migrateFrom4_1_0.bind(this));
     this.migrationMap.set('5.0.0', this.migrateFrom5_0_0.bind(this));
+    this.migrationMap.set('5.1.0', this.migrateFrom5_1_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -373,6 +375,37 @@ export class SaveManager {
           warnings.push(`commissionTask[${task.id}] 缺少 conditions 字段，已补齐`);
         }
       });
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_1_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.visitorSystem) {
+        saveData.gameState.visitorSystem = JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE));
+        warnings.push('新增字段 visitorSystem 已设为默认值');
+      } else {
+        const defaultVisitorSystem = JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE));
+        if (!saveData.gameState.visitorSystem.sprites || !Array.isArray(saveData.gameState.visitorSystem.sprites)) {
+          saveData.gameState.visitorSystem.sprites = defaultVisitorSystem.sprites;
+          warnings.push('visitorSystem.sprites 已补齐');
+        } else {
+          const existingIds = new Set(saveData.gameState.visitorSystem.sprites.map((s: any) => s.spriteId));
+          defaultVisitorSystem.sprites.forEach((defaultSprite: any) => {
+            if (!existingIds.has(defaultSprite.spriteId)) {
+              saveData.gameState.visitorSystem.sprites.push(defaultSprite);
+              warnings.push(`visitorSystem.sprites 新增 ${defaultSprite.spriteId}`);
+            }
+          });
+        }
+        if (typeof saveData.gameState.visitorSystem.totalVisitorInteractions !== 'number') {
+          saveData.gameState.visitorSystem.totalVisitorInteractions = 0;
+        }
+        if (typeof saveData.gameState.visitorSystem.nextVisitTime !== 'number') {
+          saveData.gameState.visitorSystem.nextVisitTime = 0;
+        }
+      }
     }
     return { data: saveData, warnings };
   }

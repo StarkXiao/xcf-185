@@ -31,7 +31,14 @@ import {
   WeatherEffect,
   EnvironmentState,
   EnvironmentStats,
-  RareDropEvent
+  RareDropEvent,
+  VisitorSpriteId,
+  VisitorSpriteConfig,
+  VisitorSpriteState,
+  VisitorSystemState,
+  VisitorOrderStatus,
+  AffectionLevel,
+  VisitorReward
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -1767,6 +1774,254 @@ export const RARE_DROP_EVENTS: Omit<RareDropEvent, 'lastTriggered' | 'count'>[] 
   }
 ];
 
+export const VISITOR_SPRITE_CONFIGS: Record<VisitorSpriteId, VisitorSpriteConfig> = {
+  [VisitorSpriteId.LUNA]: {
+    id: VisitorSpriteId.LUNA,
+    name: '露娜',
+    title: '月光守望者',
+    description: '月光林地最古老的精灵，热爱一切与月光有关的事物',
+    appearance: '🧚',
+    personality: '温柔恬静，喜爱月光下的宁静',
+    color: 0x88ccff,
+    glowColor: 0x4488ff,
+    preferredPetals: [PetalType.MOONLIGHT, PetalType.MOONLIGHT_SHIMMER],
+    dislikedPetals: [PetalType.FAILED_ASH],
+    visitWeight: 30,
+    minPlayTime: 0,
+    orderCooldown: 60000,
+    affectionThresholds: [0, 20, 50, 100, 180, 300],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['月光之下，我们再次相遇了', '你好呀，梦境森林的访客', '今晚的月色真美...'],
+      happy: ['这正合我意！月光花瓣是我最喜欢的', '你真懂我！太感谢了', '完美！这是月光赐予的缘分'],
+      neutral: ['嗯...可以接受', '还好吧，虽然不是我的最爱', '谢谢你的心意'],
+      dislike: ['这...不太合我意呢', '灰烬让我感到不安...', '下次换个别的吧？'],
+      affectionUp: ['我们越来越了解彼此了', '和你在一起感觉很安心', '你是月光带给我的珍贵礼物'],
+      orderPlace: ['我需要一些月光花瓣来完成仪式', '能帮我收集这些花瓣吗？'],
+      orderFulfill: ['太棒了！月光仪式可以继续了', '你是最可靠的伙伴！'],
+      reward: ['这是月光凝结的礼物，送给你', '愿月光永远照耀你的道路']
+    }
+  },
+  [VisitorSpriteId.EMBER]: {
+    id: VisitorSpriteId.EMBER,
+    name: '炎灵',
+    title: '荧光洞穴守护者',
+    description: '洞穴深处的热情精灵，被温暖的光芒所吸引',
+    appearance: '🔥',
+    personality: '热情似火，喜欢一切发光的东西',
+    color: 0xff9ecb,
+    glowColor: 0xff66aa,
+    preferredPetals: [PetalType.GLOWING, PetalType.GLOWING_EMBER],
+    dislikedPetals: [PetalType.FAILED_SLIME],
+    visitWeight: 20,
+    minPlayTime: 60,
+    orderCooldown: 75000,
+    affectionThresholds: [0, 25, 60, 120, 200, 350],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['哇！洞穴外面也好温暖呢', '嗨嗨！又见面了', '你的光芒吸引了我！'],
+      happy: ['这就是我想要的！完美！', '荧光花瓣！我的最爱！', '太温暖了，谢谢你！'],
+      neutral: ['还行吧，不算太差', '嗯，虽然不是我想要的', '至少不是黏糊糊的东西'],
+      dislike: ['呃...黏液让我浑身不舒服', '这种东西...还是算了吧', '你在开玩笑吧？'],
+      affectionUp: ['我们简直是火焰双子！', '你让我觉得洞穴也不那么孤独了', '你的温暖让我感动'],
+      orderPlace: ['洞穴深处需要更多荧光', '帮我找些发光的花瓣吧！'],
+      orderFulfill: ['你果然是最靠谱的！', '洞穴又明亮起来了！'],
+      reward: ['这是我珍藏的发光宝石', '愿你的道路永远被荧光照亮']
+    }
+  },
+  [VisitorSpriteId.RIVER]: {
+    id: VisitorSpriteId.RIVER,
+    name: '溪音',
+    title: '星辰湖畔精灵',
+    description: '湖畔的优雅精灵，钟爱露珠与星光',
+    appearance: '💧',
+    personality: '优雅沉静，像水面一样平静',
+    color: 0xa8e6cf,
+    glowColor: 0x44ddaa,
+    preferredPetals: [PetalType.DEW, PetalType.DEW_CRYSTAL, PetalType.STARLIGHT],
+    dislikedPetals: [PetalType.FAILED_DUST],
+    visitWeight: 25,
+    minPlayTime: 30,
+    orderCooldown: 65000,
+    affectionThresholds: [0, 22, 55, 110, 190, 320],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['湖面倒映着星光...你也看到了吗', '星辰湖畔的精灵向你问好', '今天的水波格外温柔'],
+      happy: ['晶莹剔透，就像晨露一样', '你真是有心人！', '星露交融，美不胜收'],
+      neutral: ['好吧，这也是一种心意', '嗯...可以接受', '谢谢你的努力'],
+      dislike: ['尘埃落在水面上...不好', '我不太喜欢这种浑浊的感觉', '请别再给我这个了'],
+      affectionUp: ['你就像水面一样清澈', '我们的友情如同湖水般深远', '你是星辰湖最好的朋友'],
+      orderPlace: ['湖水的净化需要一些花瓣', '能帮我收集这些吗？'],
+      orderFulfill: ['湖水重新变得清澈了', '你是星辰湖的守护者！'],
+      reward: ['湖底珍藏的晶露，送给你', '愿清澈的泉水永远伴随你']
+    }
+  },
+  [VisitorSpriteId.FLORA]: {
+    id: VisitorSpriteId.FLORA,
+    name: '花语',
+    title: '梦境花园主人',
+    description: '梦境花园的主人，痴迷于梦境花瓣的奥秘',
+    appearance: '🌸',
+    personality: '梦幻浪漫，总是沉浸在自己的世界中',
+    color: 0xc8a2ff,
+    glowColor: 0x9966ff,
+    preferredPetals: [PetalType.DREAM, PetalType.DREAM_PHANTOM],
+    dislikedPetals: [PetalType.FAILED_SLIME, PetalType.FAILED_ASH],
+    visitWeight: 15,
+    minPlayTime: 120,
+    orderCooldown: 80000,
+    affectionThresholds: [0, 30, 70, 140, 240, 400],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['你来了...是梦引领你来的吗', '梦境与现实之间，欢迎你', '我在梦中感应到了你的到来'],
+      happy: ['梦境花瓣！我等了好久', '你是我梦中最美的幻影', '这就是我梦寐以求的！'],
+      neutral: ['梦境中也有这样的画面', '嗯...不算太坏的梦', '虽然不完美，但也是梦的一部分'],
+      dislike: ['这不是我想要的梦...', '恶梦般的礼物', '请给我更美好的梦吧'],
+      affectionUp: ['你出现在我最美的梦中', '我们的羁绊已经超越了梦境', '你是我梦中最真实的部分'],
+      orderPlace: ['花园的梦境需要更多花瓣编织', '帮我搜集这些梦的材料'],
+      orderFulfill: ['梦境花园又绽放了新花', '你是最伟大的梦境编织者！'],
+      reward: ['这是从最深梦境中采摘的珍宝', '愿美好的梦永远与你相伴']
+    }
+  },
+  [VisitorSpriteId.AURORA]: {
+    id: VisitorSpriteId.AURORA,
+    name: '极光',
+    title: '永恒神殿祭司',
+    description: '守护永恒神殿的神秘精灵，对永恒花瓣有执着的追求',
+    appearance: '✨',
+    personality: '庄严神秘，言谈间带着古老的智慧',
+    color: 0xffd700,
+    glowColor: 0xffaa00,
+    preferredPetals: [PetalType.ETERNAL, PetalType.STARLIGHT_BURST],
+    dislikedPetals: [PetalType.FAILED_DUST, PetalType.FAILED_ASH],
+    visitWeight: 8,
+    minPlayTime: 180,
+    orderCooldown: 90000,
+    affectionThresholds: [0, 35, 80, 160, 280, 450],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['永恒神殿欢迎你的到来', '时间如河流，而你如磐石', '命运的丝线将我们相连'],
+      happy: ['永恒的力量在你手中凝聚', '这正合神殿的需要', '你拥有超越时间的力量'],
+      neutral: ['时间会证明一切', '嗯...尚可接受', '这也是命运的一种安排'],
+      dislike: ['衰败之物不该出现在神殿', '这会玷污永恒的纯净', '请敬畏永恒的力量'],
+      affectionUp: ['你正在触碰永恒的边缘', '时间无法磨灭我们的羁绊', '你是永恒选中的人'],
+      orderPlace: ['神殿需要这些花瓣来维持永恒之力', '帮我完成这个神圣的使命'],
+      orderFulfill: ['神殿的光辉因你而更加耀眼', '你是永恒最忠诚的守护者！'],
+      reward: ['永恒之力凝聚成的宝物，赐予你', '愿永恒之光永远守护你']
+    }
+  },
+  [VisitorSpriteId.SHADOW]: {
+    id: VisitorSpriteId.SHADOW,
+    name: '暗影',
+    title: '梦境森林神秘客',
+    description: '身份成谜的精灵，似乎对唤醒之花有特殊的感应',
+    appearance: '🌙',
+    personality: '神秘莫测，时而冷漠时而温柔',
+    color: 0x2a1a4e,
+    glowColor: 0x4a2a6e,
+    preferredPetals: [PetalType.WAKEUP, PetalType.ETERNAL, PetalType.DREAM_PHANTOM],
+    dislikedPetals: [],
+    visitWeight: 3,
+    minPlayTime: 300,
+    orderCooldown: 120000,
+    affectionThresholds: [0, 50, 120, 220, 380, 600],
+    levelTitles: ['陌生人', '初识', '朋友', '挚友', '知己', '灵魂伴侣'],
+    dialogue: {
+      greet: ['...你看到了我？有意思', '命运的齿轮又转动了', '这次来的是你...'],
+      happy: ['...不错，你的品味出乎意料', '这是我珍视的东西...谢谢', '你...比我想象中更特别'],
+      neutral: ['...随你', '嗯...也算可以', '无妨'],
+      dislike: ['...我什么都能接受', '没有关系...'],
+      affectionUp: ['...你让我想起了过去的某个人', '也许...你可以相信', '你的存在，让我开始期待明天'],
+      orderPlace: ['...帮我找到这些花瓣', '这是唤醒沉睡之人的关键...'],
+      orderFulfill: ['...你做到了', '也许...苏醒之日不远了'],
+      reward: ['这是...最重要的东西，交给你了', '愿你能唤醒那个人...拜托了']
+    }
+  }
+};
+
+export const VISITOR_SYSTEM_CONFIG = {
+  MIN_VISIT_INTERVAL: 45000,
+  MAX_VISIT_INTERVAL: 180000,
+  VISIT_DURATION: 60000,
+  ORDER_BASE_TIME_LIMIT: 120000,
+  ORDER_AFFECTION_REWARD_BASE: 10,
+  ORDER_AFFECTION_REWARD_PREFERRED_BONUS: 8,
+  PREFERENCE_DISCOVERY_CHANCE: 0.3,
+  AFFECTION_DECAY_RATE: 0,
+  MAX_ACTIVE_ORDERS: 1,
+  MAX_INTERACTION_RECORDS: 50
+};
+
+export const VISITOR_REWARDS: Record<VisitorSpriteId, VisitorReward[]> = {
+  [VisitorSpriteId.LUNA]: [
+    { id: 'luna_reward_1', spriteId: VisitorSpriteId.LUNA, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.MOONLIGHT, count: 5, description: '月光花瓣 ×5', icon: '🌙', claimed: false },
+    { id: 'luna_reward_2', spriteId: VisitorSpriteId.LUNA, affectionLevel: AffectionLevel.FRIEND, type: 'recipe', recipeId: 'recipe_7', description: '解锁月光融合配方', icon: '📜', claimed: false },
+    { id: 'luna_reward_3', spriteId: VisitorSpriteId.LUNA, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'petal', petalType: PetalType.MOONLIGHT_SHIMMER, count: 2, description: '月华花瓣 ×2', icon: '✨', claimed: false },
+    { id: 'luna_reward_4', spriteId: VisitorSpriteId.LUNA, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.1, description: '收集效率提升10%', icon: '⚡', claimed: false },
+    { id: 'luna_reward_5', spriteId: VisitorSpriteId.LUNA, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.ETERNAL, count: 1, description: '永恒花瓣 ×1', icon: '👑', claimed: false }
+  ],
+  [VisitorSpriteId.EMBER]: [
+    { id: 'ember_reward_1', spriteId: VisitorSpriteId.EMBER, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.GLOWING, count: 3, description: '荧光花瓣 ×3', icon: '💫', claimed: false },
+    { id: 'ember_reward_2', spriteId: VisitorSpriteId.EMBER, affectionLevel: AffectionLevel.FRIEND, type: 'petal', petalType: PetalType.GLOWING_EMBER, count: 1, description: '烬荧花瓣 ×1', icon: '🔥', claimed: false },
+    { id: 'ember_reward_3', spriteId: VisitorSpriteId.EMBER, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'recipe', recipeId: 'recipe_9', description: '解锁荧光梦境配方', icon: '📜', claimed: false },
+    { id: 'ember_reward_4', spriteId: VisitorSpriteId.EMBER, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.1, description: '合成成功率提升10%', icon: '⚡', claimed: false },
+    { id: 'ember_reward_5', spriteId: VisitorSpriteId.EMBER, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.DREAM, count: 2, description: '梦境花瓣 ×2', icon: '💜', claimed: false }
+  ],
+  [VisitorSpriteId.RIVER]: [
+    { id: 'river_reward_1', spriteId: VisitorSpriteId.RIVER, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.DEW, count: 3, description: '露珠花瓣 ×3', icon: '💧', claimed: false },
+    { id: 'river_reward_2', spriteId: VisitorSpriteId.RIVER, affectionLevel: AffectionLevel.FRIEND, type: 'recipe', recipeId: 'recipe_8', description: '解锁星露交融配方', icon: '📜', claimed: false },
+    { id: 'river_reward_3', spriteId: VisitorSpriteId.RIVER, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'petal', petalType: PetalType.DEW_CRYSTAL, count: 1, description: '晶露花瓣 ×1', icon: '❄️', claimed: false },
+    { id: 'river_reward_4', spriteId: VisitorSpriteId.RIVER, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.15, description: '收集效率提升15%', icon: '⚡', claimed: false },
+    { id: 'river_reward_5', spriteId: VisitorSpriteId.RIVER, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.ETERNAL, count: 1, description: '永恒花瓣 ×1', icon: '👑', claimed: false }
+  ],
+  [VisitorSpriteId.FLORA]: [
+    { id: 'flora_reward_1', spriteId: VisitorSpriteId.FLORA, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.DREAM, count: 2, description: '梦境花瓣 ×2', icon: '💜', claimed: false },
+    { id: 'flora_reward_2', spriteId: VisitorSpriteId.FLORA, affectionLevel: AffectionLevel.FRIEND, type: 'petal', petalType: PetalType.DREAM_PHANTOM, count: 1, description: '幻梦花瓣 ×1', icon: '✨', claimed: false },
+    { id: 'flora_reward_3', spriteId: VisitorSpriteId.FLORA, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'recipe', recipeId: 'recipe_10', description: '解锁永恒之径配方', icon: '📜', claimed: false },
+    { id: 'flora_reward_4', spriteId: VisitorSpriteId.FLORA, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.12, description: '变异概率提升12%', icon: '⚡', claimed: false },
+    { id: 'flora_reward_5', spriteId: VisitorSpriteId.FLORA, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.ETERNAL, count: 2, description: '永恒花瓣 ×2', icon: '👑', claimed: false }
+  ],
+  [VisitorSpriteId.AURORA]: [
+    { id: 'aurora_reward_1', spriteId: VisitorSpriteId.AURORA, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.STARLIGHT, count: 5, description: '星光花瓣 ×5', icon: '⭐', claimed: false },
+    { id: 'aurora_reward_2', spriteId: VisitorSpriteId.AURORA, affectionLevel: AffectionLevel.FRIEND, type: 'petal', petalType: PetalType.STARLIGHT_BURST, count: 1, description: '星爆花瓣 ×1', icon: '💥', claimed: false },
+    { id: 'aurora_reward_3', spriteId: VisitorSpriteId.AURORA, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'recipe', recipeId: 'recipe_12', description: '解锁星爆结晶配方', icon: '📜', claimed: false },
+    { id: 'aurora_reward_4', spriteId: VisitorSpriteId.AURORA, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.15, description: '稀有掉落概率提升15%', icon: '⚡', claimed: false },
+    { id: 'aurora_reward_5', spriteId: VisitorSpriteId.AURORA, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.ETERNAL, count: 2, description: '永恒花瓣 ×2', icon: '👑', claimed: false }
+  ],
+  [VisitorSpriteId.SHADOW]: [
+    { id: 'shadow_reward_1', spriteId: VisitorSpriteId.SHADOW, affectionLevel: AffectionLevel.ACQUAINTANCE, type: 'petal', petalType: PetalType.DREAM, count: 3, description: '梦境花瓣 ×3', icon: '💜', claimed: false },
+    { id: 'shadow_reward_2', spriteId: VisitorSpriteId.SHADOW, affectionLevel: AffectionLevel.FRIEND, type: 'petal', petalType: PetalType.ETERNAL, count: 1, description: '永恒花瓣 ×1', icon: '👑', claimed: false },
+    { id: 'shadow_reward_3', spriteId: VisitorSpriteId.SHADOW, affectionLevel: AffectionLevel.CLOSE_FRIEND, type: 'petal', petalType: PetalType.DREAM_PHANTOM, count: 2, description: '幻梦花瓣 ×2', icon: '✨', claimed: false },
+    { id: 'shadow_reward_4', spriteId: VisitorSpriteId.SHADOW, affectionLevel: AffectionLevel.CONFIDANT, type: 'efficiency', efficiencyBoost: 0.2, description: '全效率提升20%', icon: '⚡', claimed: false },
+    { id: 'shadow_reward_5', spriteId: VisitorSpriteId.SHADOW, affectionLevel: AffectionLevel.SOULMATE, type: 'petal', petalType: PetalType.WAKEUP, count: 1, description: '唤醒之花 ×1', icon: '🌸', claimed: false }
+  ]
+};
+
+export const INITIAL_VISITOR_SYSTEM_STATE: VisitorSystemState = {
+  sprites: Object.values(VisitorSpriteId).map(id => ({
+    spriteId: id,
+    affection: 0,
+    level: AffectionLevel.STRANGER,
+    totalVisits: 0,
+    totalOrdersPlaced: 0,
+    totalOrdersFulfilled: 0,
+    totalOrdersExpired: 0,
+    lastVisitTime: 0,
+    lastOrderTime: 0,
+    unlocked: id === VisitorSpriteId.LUNA,
+    rewards: VISITOR_REWARDS[id].map(r => ({ ...r })),
+    discoveredPreferences: [],
+    discoveredDislikes: []
+  })),
+  activeVisitor: null,
+  activeOrder: null,
+  visitorArrivedAt: 0,
+  nextVisitTime: 0,
+  visitDuration: VISITOR_SYSTEM_CONFIG.VISIT_DURATION,
+  totalVisitorInteractions: 0,
+  completedSpriteCount: 0
+};
+
 export const INITIAL_ENVIRONMENT: EnvironmentState = {
   time: {
     gameTime: 0,
@@ -1865,7 +2120,8 @@ export const INITIAL_GAME_STATE: GameState = {
     ...event,
     lastTriggered: 0,
     count: 0
-  }))
+  })),
+  visitorSystem: JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE))
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -1889,7 +2145,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.1.0';
+export const SAVE_VERSION = '5.2.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;

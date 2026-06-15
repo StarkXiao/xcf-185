@@ -8,6 +8,7 @@ import { UIManager } from '../modules/UIManager';
 import { TimeSystem } from '../modules/TimeSystem';
 import { WeatherSystem } from '../modules/WeatherSystem';
 import { RareDropSystem } from '../modules/RareDropSystem';
+import { VisitorSpriteSystem } from '../modules/VisitorSpriteSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioContextType } from '../types';
@@ -21,6 +22,7 @@ export class GameScene extends Phaser.Scene {
   private timeSystem!: TimeSystem;
   private weatherSystem!: WeatherSystem;
   private rareDropSystem!: RareDropSystem;
+  private visitorSpriteSystem!: VisitorSpriteSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -72,9 +74,12 @@ export class GameScene extends Phaser.Scene {
     this.rareDropSystem.setPetalSystem(this.petalSystem);
     this.rareDropSystem.create();
 
+    this.visitorSpriteSystem = new VisitorSpriteSystem(this);
+    this.visitorSpriteSystem.create();
+
     this.synthesisSystem = new SynthesisSystem(this);
 
-    this.uiManager = new UIManager(this, this.synthesisSystem);
+    this.uiManager = new UIManager(this, this.synthesisSystem, this.visitorSpriteSystem);
     this.uiManager.create();
 
     (this as any).petalSystem = this.petalSystem;
@@ -98,6 +103,7 @@ export class GameScene extends Phaser.Scene {
     this.petalSystem.update(time, delta, this.playerController.getPlayer(), collectRange, attractRange);
     
     this.rareDropSystem.update(time, delta);
+    this.visitorSpriteSystem.update(time, delta);
 
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
@@ -140,6 +146,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.rareDropSystem) {
       this.rareDropSystem.destroy();
+    }
+    if (this.visitorSpriteSystem) {
+      this.visitorSpriteSystem.destroy();
     }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();

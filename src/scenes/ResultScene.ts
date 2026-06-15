@@ -1,20 +1,20 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG } from '../config/GameConfig';
+import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG, VISITOR_SPRITE_CONFIGS } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType } from '../types';
+import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType, AffectionLevel, VisitorSpriteId } from '../types';
 
 export class ResultScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private reviewData!: ReviewData;
   private currentPanelIndex: number = 0;
-  private totalPanels: number = 5;
+  private totalPanels: number = 6;
   private scrollContainer!: Phaser.GameObjects.Container;
   private inheritanceOptions: InheritanceOption[] = [];
   private inheritanceUIRefs: Map<number, { cardBg: Phaser.GameObjects.Graphics; costText: Phaser.GameObjects.Text; costBg: Phaser.GameObjects.Graphics }> = new Map();
   private availablePoints: number = 0;
   private selectedInheritance: InheritanceType[] = [];
-  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '继承策略'];
+  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '访客精灵', '继承策略'];
 
   constructor() {
     super('Result');
@@ -195,7 +195,8 @@ export class ResultScene extends Phaser.Scene {
     this.createEfficiencyPanel(1);
     this.createMilestonesPanel(2);
     this.createRareDropsPanel(3);
-    this.createInheritancePanel(4);
+    this.createVisitorSpritePanel(4);
+    this.createInheritancePanel(5);
 
     this.tweens.add({
       targets: this.scrollContainer,
@@ -636,6 +637,180 @@ export class ResultScene extends Phaser.Scene {
 
       this.scrollContainer.add(scrollBg);
     }
+
+    this.scrollContainer.add([container, mask]);
+  }
+
+  private createVisitorSpritePanel(panelIndex: number): void {
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xffaa00, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const container = this.add.container(panelX, panelY);
+    container.add(panelBg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 40, '🧚 访客精灵', {
+      fontFamily: 'Arial',
+      fontSize: '26px',
+      color: '#ffaa00',
+      align: 'center'
+    }).setOrigin(0.5);
+    container.add(title);
+
+    const gameState = SaveManager.getInstance().getGameState();
+    const visitorState = gameState.visitorSystem;
+
+    let totalVisits = 0;
+    let totalOrdersFulfilled = 0;
+    let totalRewardsClaimed = 0;
+    let unlockedCount = 0;
+    let soulmateCount = 0;
+    let highestAffection = 0;
+    let highestAffectionId: VisitorSpriteId | null = null;
+
+    visitorState.sprites.forEach(s => {
+      totalVisits += s.totalVisits;
+      totalOrdersFulfilled += s.totalOrdersFulfilled;
+      totalRewardsClaimed += s.rewards.filter(r => r.claimed).length;
+      if (s.unlocked) unlockedCount++;
+      if (s.level === AffectionLevel.SOULMATE) soulmateCount++;
+      if (s.affection > highestAffection) {
+        highestAffection = s.affection;
+        highestAffectionId = s.spriteId;
+      }
+    });
+
+    const summaryY = 85;
+    const summaryItems = [
+      { label: '解锁精灵', value: `${unlockedCount}/${visitorState.sprites.length}` },
+      { label: '总来访次数', value: `${totalVisits}` },
+      { label: '完成订单', value: `${totalOrdersFulfilled}` },
+      { label: '领取奖励', value: `${totalRewardsClaimed}` },
+      { label: '灵魂伴侣', value: `${soulmateCount}` },
+    ];
+
+    summaryItems.forEach((item, idx) => {
+      const row = idx % 3;
+      const col = Math.floor(idx / 3);
+      const x = 70 + col * 280;
+      const y = summaryY + row * 35;
+
+      const label = this.add.text(x, y, item.label, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      container.add(label);
+
+      const val = this.add.text(x + 120, y, item.value, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      container.add(val);
+    });
+
+    const dividerY = summaryY + 120;
+    const divider = this.add.graphics();
+    divider.lineStyle(1, 0x333333, 0.5);
+    divider.beginPath();
+    divider.moveTo(50, dividerY);
+    divider.lineTo(GAME_WIDTH - 50, dividerY);
+    divider.strokePath();
+    container.add(divider);
+
+    const listTitle = this.add.text(GAME_WIDTH / 2, dividerY + 25, '精灵详情', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+    container.add(listTitle);
+
+    const unlockedSprites = visitorState.sprites.filter(s => s.unlocked);
+    let spriteY = dividerY + 55;
+
+    unlockedSprites.forEach((spriteState, idx) => {
+      const config = VISITOR_SPRITE_CONFIGS[spriteState.spriteId];
+      const cardY = spriteY + idx * 42;
+
+      if (cardY + 40 > 420) return;
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(config.color, 0.1);
+      cardBg.fillRoundedRect(50, cardY, GAME_WIDTH - 100, 36, 8);
+      cardBg.lineStyle(1, config.color, 0.3);
+      cardBg.strokeRoundedRect(50, cardY, GAME_WIDTH - 100, 36, 8);
+      container.add(cardBg);
+
+      const icon = this.add.text(70, cardY + 18, config.appearance, {
+        fontFamily: 'Arial',
+        fontSize: '18px'
+      }).setOrigin(0, 0.5);
+      container.add(icon);
+
+      const name = this.add.text(100, cardY + 10, config.name, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      container.add(name);
+
+      const levelTitle = config.levelTitles[spriteState.level];
+      const levelText = this.add.text(100, cardY + 28, levelTitle, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: `#${config.color.toString(16).padStart(6, '0')}`
+      }).setOrigin(0, 0.5);
+      container.add(levelText);
+
+      const affectionText = this.add.text(GAME_WIDTH - 140, cardY + 10, `好感: ${spriteState.affection}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#cccccc'
+      }).setOrigin(0, 0.5);
+      container.add(affectionText);
+
+      const visitText = this.add.text(GAME_WIDTH - 140, cardY + 28, `${spriteState.totalVisits}次 / ${spriteState.totalOrdersFulfilled}单`, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      container.add(visitText);
+
+      const rewardCount = spriteState.rewards.filter(r => r.claimed).length;
+      const totalRewards = spriteState.rewards.length;
+      const rewardText = this.add.text(GAME_WIDTH - 50, cardY + 18, `${rewardCount}/${totalRewards}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: rewardCount === totalRewards ? '#a8e6cf' : '#ffaa00',
+        align: 'right'
+      }).setOrigin(1, 0.5);
+      container.add(rewardText);
+    });
+
+    if (highestAffectionId) {
+      const config = VISITOR_SPRITE_CONFIGS[highestAffectionId];
+      const bestLabel = this.add.text(GAME_WIDTH / 2, 400, `最亲密: ${config.name} (好感 ${highestAffection})`, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#ffaa00',
+        align: 'center'
+      }).setOrigin(0.5);
+      container.add(bestLabel);
+    }
+
+    const mask = this.add.graphics();
+    mask.fillStyle(0x000000, 0);
+    mask.fillRect(panelX, panelY, GAME_WIDTH, 420);
 
     this.scrollContainer.add([container, mask]);
   }
