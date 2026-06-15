@@ -4,7 +4,8 @@ import {
   SeasonType, 
   TimeState,
   EnvironmentState,
-  StatusType
+  StatusType,
+  WeatherType
 } from '../types';
 import { 
   TIME_CONFIG, 
@@ -35,7 +36,7 @@ export class TimeSystem {
 
   private setupEventListeners(): void {
     const onWeatherChanged = (data: any) => {
-      if (data.newWeather === 'storm' || data.newWeather === 'heavy_rain') {
+      if (data.newWeather === WeatherType.STORM || data.newWeather === WeatherType.HEAVY_RAIN) {
         this.thunderTimer = 3000 + Math.random() * 5000;
       }
     };
@@ -163,52 +164,52 @@ export class TimeSystem {
       [SeasonType.WINTER]: 5
     };
 
-    const weatherTempMod: Record<string, number> = {
-      clear: 3,
-      cloudy: 0,
-      rain: -3,
-      heavy_rain: -5,
-      snow: -8,
-      fog: -2,
-      windy: -4,
-      storm: -6,
-      aurora: 0,
-      meteor: 2
+    const weatherTempMod: Record<WeatherType, number> = {
+      [WeatherType.CLEAR]: 3,
+      [WeatherType.CLOUDY]: 0,
+      [WeatherType.RAIN]: -3,
+      [WeatherType.HEAVY_RAIN]: -5,
+      [WeatherType.SNOW]: -8,
+      [WeatherType.FOG]: -2,
+      [WeatherType.WINDY]: -4,
+      [WeatherType.STORM]: -6,
+      [WeatherType.AURORA]: 0,
+      [WeatherType.METEOR]: 2
     };
 
     env.temperature = temperatureBySeason[env.time.season] + 
-      (weatherTempMod[weatherEffect] || 0) +
+      (weatherTempMod[weatherEffect as WeatherType] || 0) +
       Math.sin(env.time.timeProgress * Math.PI) * 3;
 
-    const windSpeedByWeather: Record<string, number> = {
-      clear: 0.1,
-      cloudy: 0.2,
-      rain: 0.4,
-      heavy_rain: 0.6,
-      snow: 0.3,
-      fog: 0.05,
-      windy: 0.8,
-      storm: 1.0,
-      aurora: 0.15,
-      meteor: 0.2
+    const windSpeedByWeather: Record<WeatherType, number> = {
+      [WeatherType.CLEAR]: 0.1,
+      [WeatherType.CLOUDY]: 0.2,
+      [WeatherType.RAIN]: 0.4,
+      [WeatherType.HEAVY_RAIN]: 0.6,
+      [WeatherType.SNOW]: 0.3,
+      [WeatherType.FOG]: 0.05,
+      [WeatherType.WINDY]: 0.8,
+      [WeatherType.STORM]: 1.0,
+      [WeatherType.AURORA]: 0.15,
+      [WeatherType.METEOR]: 0.2
     };
 
-    env.windSpeed = windSpeedByWeather[weatherEffect] || 0.2;
+    env.windSpeed = windSpeedByWeather[weatherEffect as WeatherType] || 0.2;
 
-    const fogDensityByWeather: Record<string, number> = {
-      clear: 0.05,
-      cloudy: 0.15,
-      rain: 0.2,
-      heavy_rain: 0.3,
-      snow: 0.25,
-      fog: 0.6,
-      windy: 0.1,
-      storm: 0.2,
-      aurora: 0.1,
-      meteor: 0.08
+    const fogDensityByWeather: Record<WeatherType, number> = {
+      [WeatherType.CLEAR]: 0.05,
+      [WeatherType.CLOUDY]: 0.15,
+      [WeatherType.RAIN]: 0.2,
+      [WeatherType.HEAVY_RAIN]: 0.3,
+      [WeatherType.SNOW]: 0.25,
+      [WeatherType.FOG]: 0.6,
+      [WeatherType.WINDY]: 0.1,
+      [WeatherType.STORM]: 0.2,
+      [WeatherType.AURORA]: 0.1,
+      [WeatherType.METEOR]: 0.08
     };
 
-    env.fogDensity = fogDensityByWeather[weatherEffect] || 0.1;
+    env.fogDensity = fogDensityByWeather[weatherEffect as WeatherType] || 0.1;
 
     const skyColors = {
       top: 0x0a0514,
@@ -222,7 +223,7 @@ export class TimeSystem {
   }
 
   private updateThunderEffects(delta: number, env: EnvironmentState): void {
-    if (env.weather.currentWeather !== 'storm' && env.weather.currentWeather !== 'heavy_rain') {
+    if (env.weather.currentWeather !== WeatherType.STORM && env.weather.currentWeather !== WeatherType.HEAVY_RAIN) {
       return;
     }
 

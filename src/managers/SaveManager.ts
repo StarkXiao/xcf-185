@@ -211,7 +211,17 @@ export class SaveManager {
         lastSaveTime: oldState.lastSaveTime || 0,
         collectionTasks: migratedCollectionTasks,
         collectionTaskChains: migratedCollectionTaskChains,
-        redDotState: migratedRedDotState
+        redDotState: migratedRedDotState,
+        regionHeats: oldState.regionHeats || initialState.regionHeats,
+        consecutiveCollect: oldState.consecutiveCollect || null,
+        dailyRewardState: oldState.dailyRewardState || initialState.dailyRewardState,
+        environment: oldState.environment || JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT)),
+        environmentStats: oldState.environmentStats || JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT_STATS)),
+        rareDropEvents: oldState.rareDropEvents || RARE_DROP_EVENTS.map(event => ({
+          ...event,
+          lastTriggered: 0,
+          count: 0
+        }))
       }
     };
   }
@@ -1449,6 +1459,7 @@ export class SaveManager {
     const errors: string[] = [];
     const warnings: string[] = [];
     let fixed = false;
+    const initialState = getInitialGameState();
 
     if (!data) {
       return { valid: false, errors: ['无存档数据'], warnings: [], fixed: false };
@@ -1566,6 +1577,76 @@ export class SaveManager {
     if (!state.dailyRewardState) {
       warnings.push('dailyRewardState 数据异常，已重置');
       state.dailyRewardState = JSON.parse(JSON.stringify(INITIAL_DAILY_REWARD_STATE));
+      fixed = true;
+    }
+
+    if (!state.regionHeats || !Array.isArray(state.regionHeats) || state.regionHeats.length === 0) {
+      warnings.push('regionHeats 数据异常，已重置');
+      state.regionHeats = JSON.parse(JSON.stringify(initialState.regionHeats));
+      fixed = true;
+    }
+
+    if (!state.environment) {
+      warnings.push('environment 数据异常，已重置');
+      state.environment = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT));
+      fixed = true;
+    } else {
+      if (!state.environment.time) {
+        warnings.push('environment.time 数据异常，已重置');
+        state.environment.time = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT.time));
+        fixed = true;
+      }
+      if (!state.environment.weather) {
+        warnings.push('environment.weather 数据异常，已重置');
+        state.environment.weather = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT.weather));
+        fixed = true;
+      }
+    }
+
+    if (!state.environmentStats) {
+      warnings.push('environmentStats 数据异常，已重置');
+      state.environmentStats = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT_STATS));
+      fixed = true;
+    } else {
+      if (typeof state.environmentStats.totalDaysPlayed !== 'number' || state.environmentStats.totalDaysPlayed < 0) {
+        warnings.push('environmentStats.totalDaysPlayed 数据异常，已重置');
+        state.environmentStats.totalDaysPlayed = 0;
+        fixed = true;
+      }
+      if (typeof state.environmentStats.nightsPlayed !== 'number' || state.environmentStats.nightsPlayed < 0) {
+        warnings.push('environmentStats.nightsPlayed 数据异常，已重置');
+        state.environmentStats.nightsPlayed = 0;
+        fixed = true;
+      }
+      if (typeof state.environmentStats.totalRareDrops !== 'number' || state.environmentStats.totalRareDrops < 0) {
+        warnings.push('environmentStats.totalRareDrops 数据异常，已重置');
+        state.environmentStats.totalRareDrops = 0;
+        fixed = true;
+      }
+      if (!state.environmentStats.weatherExperience || typeof state.environmentStats.weatherExperience !== 'object') {
+        warnings.push('environmentStats.weatherExperience 数据异常，已重置');
+        state.environmentStats.weatherExperience = JSON.parse(JSON.stringify(INITIAL_ENVIRONMENT_STATS.weatherExperience));
+        fixed = true;
+      }
+      if (!state.environmentStats.specialEventsWitnessed || !Array.isArray(state.environmentStats.specialEventsWitnessed)) {
+        warnings.push('environmentStats.specialEventsWitnessed 数据异常，已重置');
+        state.environmentStats.specialEventsWitnessed = [];
+        fixed = true;
+      }
+      if (!state.environmentStats.rareDropsFound || !Array.isArray(state.environmentStats.rareDropsFound)) {
+        warnings.push('environmentStats.rareDropsFound 数据异常，已重置');
+        state.environmentStats.rareDropsFound = [];
+        fixed = true;
+      }
+    }
+
+    if (!state.rareDropEvents || !Array.isArray(state.rareDropEvents) || state.rareDropEvents.length === 0) {
+      warnings.push('rareDropEvents 数据异常，已重置');
+      state.rareDropEvents = RARE_DROP_EVENTS.map(event => ({
+        ...event,
+        lastTriggered: 0,
+        count: 0
+      }));
       fixed = true;
     }
 

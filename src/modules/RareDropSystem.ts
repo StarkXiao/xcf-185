@@ -15,7 +15,8 @@ import {
   INITIAL_ENVIRONMENT,
   INITIAL_ENVIRONMENT_STATS,
   WORLD_WIDTH,
-  WORLD_HEIGHT
+  WORLD_HEIGHT,
+  PETAL_CONFIGS
 } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -561,11 +562,7 @@ export class RareDropSystem {
   }
 
   private getPetalConfig(type: PetalType): any {
-    const PETAL_CONFIGS = (window as any).PETAL_CONFIGS;
-    if (PETAL_CONFIGS) {
-      return PETAL_CONFIGS.find((c: any) => c.type === type);
-    }
-    return null;
+    return PETAL_CONFIGS[type] || null;
   }
 
   private getEventById(eventId: string): RareDropEvent | undefined {
