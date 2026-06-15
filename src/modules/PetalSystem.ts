@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { PetalType, PetalObject, Region, RegionHeat, ConsecutiveCollect, SpawnAdjustment } from '../types';
+import { PetalType, PetalObject, Region, RegionHeat, ConsecutiveCollect, SpawnAdjustment, RegionConfig } from '../types';
 import { 
   PETAL_CONFIGS, 
   PETAL_SPAWN_INTERVAL, 
@@ -7,6 +7,7 @@ import {
   WORLD_WIDTH,
   WORLD_HEIGHT,
   REGIONS,
+  REGION_CONFIGS,
   HEAT_CONFIG,
   DECAY_CONFIG,
   BALANCE_CONFIG,
@@ -17,6 +18,7 @@ import {
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
 import { SettingsManager } from '../managers/SettingsManager';
+import { RegionUnlockSystem } from './RegionUnlockSystem';
 
 export class PetalSystem {
   private scene: Phaser.Scene;
@@ -35,6 +37,8 @@ export class PetalSystem {
   private heatIndicator: Phaser.GameObjects.Text | null = null;
   private decayIndicator: Phaser.GameObjects.Text | null = null;
   private currentSpawnAdjustments: SpawnAdjustment[] = [];
+  private regionUnlockSystem: RegionUnlockSystem | null = null;
+  private currentRegionId: string | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -50,6 +54,33 @@ export class PetalSystem {
 
   public setEfficiencyBoost(boost: number): void {
     this.efficiencyBoost = boost;
+  }
+
+  public setRegionUnlockSystem(system: RegionUnlockSystem): void {
+    this.regionUnlockSystem = system;
+    const state = SaveManager.getInstance().getGameState();
+    this.currentRegionId = state.currentRegionId;
+  }
+
+  public onRegionChanged(regionId: string): void {
+    this.currentRegionId = regionId;
+    this.clearOtherRegionPetals();
+    this.spawnInitialPetals();
+  }
+
+  private clearOtherRegionPetals(): void {
+    if (!this.petalGroup || !this.regionUnlockSystem) return;
+
+    for (let i = this.petalPool.length - 1; i >= 0; i--) {
+      const petal = this.petalPool[i];
+      if (!petal.active || !petal.active) continue;
+
+      const region = this.regionUnlockSystem.findRegionAtPosition(petal.x, petal.y);
+      if (region && region.id !== this.currentRegionId) {
+        this.petalGroup.killAndHide(petal);
+        petal.setActive(false);
+      }
+    }
   }
 
   public create(): void {
@@ -272,12 +303,21 @@ export class PetalSystem {
     return 1;
   }
 
+  private getPlayerRegionConfig(): RegionConfig | null {
+    if (!this.player) return null;
+    const state = SaveManager.getInstance().getGameState();
+    const regionId = state.currentRegionId;
+    if (!regionId) return null;
+    return REGION_CONFIGS.find(rc => rc.id === regionId) || null;
+  }
+
   private calculateSpawnAdjustments(): SpawnAdjustment[] {
     const state = SaveManager.getInstance().getGameState();
     const adjustments: SpawnAdjustment[] = [];
     const spawnableTypes = Object.values(PetalType).filter(type => PETAL_CONFIGS[type].spawnWeight > 0);
 
     const env = state.environment;
+    const playerRegion = this.getPlayerRegionConfig();
 
     spawnableTypes.forEach(type => {
       const config = PETAL_CONFIGS[type];
@@ -322,10 +362,21 @@ export class PetalSystem {
           seasonMultiplier = seasonEffect.spawnWeightModifier[type]!;
         }
       }
+
+      let regionMultiplier = 1;
+      if (playerRegion) {
+        regionMultiplier = playerRegion.spawnRateMultiplier || 1;
+        if (playerRegion.preferredPetals?.includes(type)) {
+          regionMultiplier *= 1.8;
+        }
+        if (config.level >= 5 && playerRegion.rareDropBoost) {
+          regionMultiplier *= 1 + playerRegion.rareDropBoost;
+        }
+      }
       
       const finalWeight = Math.max(
         BALANCE_CONFIG.minSpawnWeight,
-        config.spawnWeight * heatMultiplier * decayMultiplier * balanceMultiplier * timeMultiplier * weatherMultiplier * seasonMultiplier
+        config.spawnWeight * heatMultiplier * decayMultiplier * balanceMultiplier * timeMultiplier * weatherMultiplier * seasonMultiplier * regionMultiplier
       );
 
       adjustments.push({
@@ -534,11 +585,41 @@ export class PetalSystem {
     const type = this.getRandomPetalType();
     const config = PETAL_CONFIGS[type];
     
-    const padding = 100;
-    const x = padding + Math.random() * (WORLD_WIDTH - padding * 2);
-    const y = padding + Math.random() * (WORLD_HEIGHT - padding * 2);
+    let x: number, y: number;
+    let region: RegionConfig | null = null;
+    let attempts = 0;
+    const maxAttempts = 20;
 
-    const region = this.getRegionAtPosition(x, y);
+    while (attempts < maxAttempts) {
+      if (this.currentRegionId && Math.random() < 0.8) {
+        const currentRegion = this.regionUnlockSystem?.getRegionConfig(this.currentRegionId);
+        if (currentRegion) {
+          x = currentRegion.x + 50 + Math.random() * (currentRegion.width - 100);
+          y = currentRegion.y + 50 + Math.random() * (currentRegion.height - 100);
+          region = currentRegion;
+        } else {
+          const padding = 100;
+          x = padding + Math.random() * (WORLD_WIDTH - padding * 2);
+          y = padding + Math.random() * (WORLD_HEIGHT - padding * 2);
+          region = this.regionUnlockSystem?.findRegionAtPosition(x, y) || null;
+        }
+      } else {
+        const padding = 100;
+        x = padding + Math.random() * (WORLD_WIDTH - padding * 2);
+        y = padding + Math.random() * (WORLD_HEIGHT - padding * 2);
+        region = this.regionUnlockSystem?.findRegionAtPosition(x, y) || null;
+      }
+
+      if (region && this.regionUnlockSystem?.isRegionUnlocked(region.id)) {
+        break;
+      }
+      attempts++;
+    }
+
+    if (attempts >= maxAttempts) {
+      return;
+    }
+
     const regionHeat = region 
       ? SaveManager.getInstance().getGameState().regionHeats.find(r => r.regionId === region.id)
       : null;

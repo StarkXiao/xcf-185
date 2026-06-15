@@ -8,6 +8,7 @@ import { PathfindingSystem } from './PathfindingSystem';
 import { ObstacleSystem } from './ObstacleSystem';
 import { CollectRangeSystem } from './CollectRangeSystem';
 import { TutorialSystem } from './TutorialSystem';
+import { RegionUnlockSystem } from './RegionUnlockSystem';
 
 export class PlayerController {
   private scene: Phaser.Scene;
@@ -31,6 +32,7 @@ export class PlayerController {
   private obstacleSystem: ObstacleSystem;
   private collectRangeSystem: CollectRangeSystem;
   private tutorialSystem: TutorialSystem;
+  private regionUnlockSystem: RegionUnlockSystem | null = null;
   private currentPath: Position[] = [];
   private currentPathIndex = 0;
   private pathPreviewGraphics: Phaser.GameObjects.Graphics | null = null;
@@ -431,6 +433,14 @@ export class PlayerController {
     this.collectRangeSystem.update(time, delta);
     this.tutorialSystem.update(time, delta);
 
+    if (this.regionUnlockSystem && this.regionUnlockSystem.isPositionInLockedRegion(this.player.x, this.player.y)) {
+      const clampedPos = this.regionUnlockSystem.clampToUnlockedRegion(this.player.x, this.player.y);
+      this.player.setPosition(clampedPos.x, clampedPos.y);
+      this.player.setVelocity(0, 0);
+      this.currentPath = [];
+      this.isMoving = false;
+    }
+
     SaveManager.getInstance().updatePlayerPosition(this.player.x, this.player.y);
   }
 
@@ -604,6 +614,10 @@ export class PlayerController {
 
   public getObstacles(): Obstacle[] {
     return this.obstacleSystem.getObstacles();
+  }
+
+  public setRegionUnlockSystem(system: RegionUnlockSystem): void {
+    this.regionUnlockSystem = system;
   }
 
   public destroy(): void {

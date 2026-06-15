@@ -68,7 +68,9 @@ import {
   INITIAL_ENVIRONMENT,
   INITIAL_ENVIRONMENT_STATS,
   RARE_DROP_EVENTS,
-  INITIAL_VISITOR_SYSTEM_STATE
+  INITIAL_VISITOR_SYSTEM_STATE,
+  getInitialRegionUnlockStates,
+  getDefaultCurrentRegionId
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -108,10 +110,11 @@ export class SaveManager {
     this.migrationMap.set('4.1.0', this.migrateFrom4_1_0.bind(this));
     this.migrationMap.set('5.0.0', this.migrateFrom5_0_0.bind(this));
     this.migrationMap.set('5.1.0', this.migrateFrom5_1_0.bind(this));
+    this.migrationMap.set('5.2.0', this.migrateFrom5_2_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -240,7 +243,10 @@ export class SaveManager {
           ...event,
           lastTriggered: 0,
           count: 0
-        }))
+        })),
+        regionUnlockStates: oldState.regionUnlockStates || getInitialRegionUnlockStates(),
+        currentRegionId: oldState.currentRegionId || getDefaultCurrentRegionId(),
+        lastRegionId: oldState.lastRegionId === undefined ? null : oldState.lastRegionId
       }
     };
   }
@@ -405,6 +411,45 @@ export class SaveManager {
         if (typeof saveData.gameState.visitorSystem.nextVisitTime !== 'number') {
           saveData.gameState.visitorSystem.nextVisitTime = 0;
         }
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_2_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.regionUnlockStates || !Array.isArray(saveData.gameState.regionUnlockStates)) {
+        saveData.gameState.regionUnlockStates = getInitialRegionUnlockStates();
+        warnings.push('新增字段 regionUnlockStates 已设为默认值');
+      } else {
+        const defaultStates = getInitialRegionUnlockStates();
+        const existingIds = new Set(saveData.gameState.regionUnlockStates.map((s: any) => s.regionId));
+        defaultStates.forEach(defaultState => {
+          if (!existingIds.has(defaultState.regionId)) {
+            saveData.gameState.regionUnlockStates.push({ ...defaultState });
+            warnings.push(`regionUnlockStates 新增 ${defaultState.regionId}`);
+          }
+        });
+        saveData.gameState.regionUnlockStates.forEach((state: any, idx: number) => {
+          if (typeof state.isUnlocked !== 'boolean') {
+            saveData.gameState.regionUnlockStates[idx].isUnlocked = true;
+          }
+          if (typeof state.visitCount !== 'number') {
+            saveData.gameState.regionUnlockStates[idx].visitCount = 0;
+          }
+          if (typeof state.totalTimeSpent !== 'number') {
+            saveData.gameState.regionUnlockStates[idx].totalTimeSpent = 0;
+          }
+        });
+      }
+      if (!saveData.gameState.currentRegionId) {
+        saveData.gameState.currentRegionId = getDefaultCurrentRegionId();
+        warnings.push('新增字段 currentRegionId 已设为默认值');
+      }
+      if (saveData.gameState.lastRegionId === undefined) {
+        saveData.gameState.lastRegionId = null;
+        warnings.push('新增字段 lastRegionId 已设为默认值');
       }
     }
     return { data: saveData, warnings };

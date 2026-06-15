@@ -51,7 +51,8 @@ export enum QuickEntryType {
   COLLECTION = 'collection',
   GOAL = 'goal',
   RECIPE_HINT = 'recipe_hint',
-  AUTO_SAVE = 'auto_save'
+  AUTO_SAVE = 'auto_save',
+  MAP = 'map'
 }
 
 export enum StatusType {
@@ -196,6 +197,9 @@ export interface GameState {
   environmentStats: EnvironmentStats;
   rareDropEvents: RareDropEvent[];
   visitorSystem: VisitorSystemState;
+  regionUnlockStates: RegionUnlockState[];
+  currentRegionId: string | null;
+  lastRegionId: string | null;
 }
 
 export interface AudioContextPreferences {
@@ -223,6 +227,58 @@ export interface PetalObject extends Phaser.Physics.Arcade.Sprite {
   spawnTime?: number;
   heatBonus?: number;
   decayPenalty?: number;
+}
+
+export enum RegionUnlockConditionType {
+  PETAL_COLLECTED = 'petal_collected',
+  PETAL_UNLOCKED = 'petal_unlocked',
+  TOTAL_COLLECTED = 'total_collected',
+  TOTAL_SYNTHESIZED = 'total_synthesized',
+  PLAY_TIME = 'play_time',
+  REGION_UNLOCKED = 'region_unlocked',
+  RECIPE_SYNTHESIZED = 'recipe_synthesized',
+  GOAL_COMPLETED = 'goal_completed'
+}
+
+export interface RegionUnlockCondition {
+  type: RegionUnlockConditionType;
+  target?: PetalType | string;
+  targetCount?: number;
+  description: string;
+}
+
+export interface RegionConfig extends Region {
+  unlockConditions: RegionUnlockCondition[];
+  isLockedByDefault: boolean;
+  entryPoint: Position;
+  difficulty: 'easy' | 'medium' | 'hard' | 'legendary';
+  spawnRateMultiplier: number;
+  rareDropBoost: number;
+  ambiance: {
+    bgTint: number;
+    particleColor: number;
+    fogDensity: number;
+  };
+  navigationIcon: string;
+}
+
+export interface RegionUnlockState {
+  regionId: string;
+  isUnlocked: boolean;
+  unlockedAt?: number;
+  visitCount: number;
+  firstVisitAt?: number;
+  totalTimeSpent: number;
+}
+
+export interface RegionEntrance {
+  regionId: string;
+  entranceX: number;
+  entranceY: number;
+  exitX: number;
+  exitY: number;
+  width: number;
+  height: number;
 }
 
 export interface Region {
@@ -880,4 +936,11 @@ export interface GameEvents {
   'visitor:reward_claimed': { spriteId: VisitorSpriteId; reward: VisitorReward };
   'visitor:preference_discovered': { spriteId: VisitorSpriteId; petalType: PetalType; isPreference: boolean };
   'visitor:panel_opened': {};
+  'region:unlocked': { regionId: string; regionName: string };
+  'region:entered': { regionId: string; regionName: string; previousRegionId: string | null };
+  'region:left': { regionId: string; regionName: string; nextRegionId: string | null };
+  'region:locked_attempt': { regionId: string; regionName: string; missingConditions: string[] };
+  'region:condition_progress': { regionId: string; conditionIndex: number; current: number; target: number };
+  'region:map_opened': {};
+  'region:navigate_request': { regionId: string };
 }

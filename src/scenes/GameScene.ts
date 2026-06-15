@@ -9,9 +9,11 @@ import { TimeSystem } from '../modules/TimeSystem';
 import { WeatherSystem } from '../modules/WeatherSystem';
 import { RareDropSystem } from '../modules/RareDropSystem';
 import { VisitorSpriteSystem } from '../modules/VisitorSpriteSystem';
+import { RegionUnlockSystem } from '../modules/RegionUnlockSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
-import { AudioContextType } from '../types';
+import { EventManager } from '../managers/EventManager';
+import { AudioContextType, StatusType } from '../types';
 
 export class GameScene extends Phaser.Scene {
   private sceneRenderer!: SceneRenderer;
@@ -23,6 +25,7 @@ export class GameScene extends Phaser.Scene {
   private weatherSystem!: WeatherSystem;
   private rareDropSystem!: RareDropSystem;
   private visitorSpriteSystem!: VisitorSpriteSystem;
+  private regionUnlockSystem!: RegionUnlockSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -77,19 +80,70 @@ export class GameScene extends Phaser.Scene {
     this.visitorSpriteSystem = new VisitorSpriteSystem(this);
     this.visitorSpriteSystem.create();
 
+    this.regionUnlockSystem = new RegionUnlockSystem(this);
+    this.regionUnlockSystem.create();
+
+    this.playerController.setRegionUnlockSystem(this.regionUnlockSystem);
+
     this.synthesisSystem = new SynthesisSystem(this);
 
-    this.uiManager = new UIManager(this, this.synthesisSystem, this.visitorSpriteSystem);
+    this.uiManager = new UIManager(this, this.synthesisSystem, this.visitorSpriteSystem, this.regionUnlockSystem);
     this.uiManager.create();
+
+    this.petalSystem.setRegionUnlockSystem(this.regionUnlockSystem);
 
     (this as any).petalSystem = this.petalSystem;
     (this as any).player = this.player;
+    (this as any).regionUnlockSystem = this.regionUnlockSystem;
+
+    this.setupRegionEventListeners();
 
     SaveManager.getInstance().addTrendPoint();
 
     this.events.on('shutdown', () => this.destroy());
     this.events.on('pause', () => this.pause());
     this.events.on('resume', () => this.resume());
+  }
+
+  private setupRegionEventListeners(): void {
+    EventManager.getInstance().on('region:navigate_request', (data) => {
+      if (this.regionUnlockSystem) {
+        this.regionUnlockSystem.teleportToRegion(data.regionId);
+      }
+    });
+
+    EventManager.getInstance().on('region:entered', (data) => {
+      this.handleRegionEntered(data.regionId);
+    });
+  }
+
+  private handleRegionEntered(regionId: string): void {
+    const config = this.regionUnlockSystem.getRegionConfig(regionId);
+    if (!config) return;
+
+    if (this.sceneRenderer) {
+      this.sceneRenderer.setRegionAmbiance(config.ambiance);
+    }
+
+    if (this.petalSystem) {
+      this.petalSystem.onRegionChanged(regionId);
+    }
+
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.time.delayedCall(200, () => {
+      this.cameras.main.fadeIn(300, 0, 0, 0);
+    });
+
+    EventManager.getInstance().emit('status:show', {
+      message: {
+        id: `region_enter_${Date.now()}`,
+        type: StatusType.INFO,
+        title: `📍 ${config.name}`,
+        content: config.description,
+        timestamp: Date.now(),
+        duration: 3000
+      }
+    });
   }
 
   update(time: number, delta: number): void {
@@ -104,6 +158,7 @@ export class GameScene extends Phaser.Scene {
     
     this.rareDropSystem.update(time, delta);
     this.visitorSpriteSystem.update(time, delta);
+    this.regionUnlockSystem.update(time, delta);
 
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
@@ -149,6 +204,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.visitorSpriteSystem) {
       this.visitorSpriteSystem.destroy();
+    }
+    if (this.regionUnlockSystem) {
+      this.regionUnlockSystem.destroy();
     }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();

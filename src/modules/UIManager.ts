@@ -39,6 +39,8 @@ import { EventManager } from '../managers/EventManager';
 import { SettingsManager } from '../managers/SettingsManager';
 import { SynthesisSystem } from './SynthesisSystem';
 import { VisitorSpriteSystem } from './VisitorSpriteSystem';
+import { RegionUnlockSystem } from './RegionUnlockSystem';
+import { RegionMapPanel } from './RegionMapPanel';
 import { AudioManager } from '../managers/AudioManager';
 
 type CollectionCategory = 'normal' | 'mutation' | 'failed';
@@ -74,17 +76,24 @@ export class UIManager {
   private currentSettingsTab: SettingsTabType = 'controls';
   private visitorSpriteSystem: VisitorSpriteSystem;
   private visitorPanel: Phaser.GameObjects.Container | null = null;
+  private regionUnlockSystem: RegionUnlockSystem;
+  private regionMapPanel: RegionMapPanel | null = null;
+  private mapButton: Phaser.GameObjects.Container | null = null;
 
-  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem, visitorSpriteSystem: VisitorSpriteSystem) {
+  constructor(scene: Phaser.Scene, synthesisSystem: SynthesisSystem, visitorSpriteSystem: VisitorSpriteSystem, regionUnlockSystem: RegionUnlockSystem) {
     this.scene = scene;
     this.synthesisSystem = synthesisSystem;
     this.visitorSpriteSystem = visitorSpriteSystem;
+    this.regionUnlockSystem = regionUnlockSystem;
   }
 
   public create(): void {
     this.createPixelTextures();
     this.createMainUI();
     this.setupEventListeners();
+    
+    this.regionMapPanel = new RegionMapPanel(this.scene);
+    this.regionMapPanel.create();
   }
 
   private createPixelTextures(): void {
@@ -121,6 +130,7 @@ export class UIManager {
     this.createProgressUI();
     this.createInfoCenterButton();
     this.createVisitorButton();
+    this.createMapButton();
     this.createMiniGoalDisplay();
     this.createMiniTrendDisplay();
     this.createStatusContainer();
@@ -425,6 +435,66 @@ export class UIManager {
     button.on('pointerout', () => btnBg.setScale(1));
 
     this.container.add([btnBg, btnText, button, this.visitorButtonRedDot]);
+  }
+
+  private createMapButton(): void {
+    if (!this.container) return;
+
+    const btnX = GAME_WIDTH - 55;
+    const btnY = 75;
+
+    const btnBg = this.scene.add.graphics();
+    btnBg.fillStyle(0x66b3ff, 0.8);
+    btnBg.fillCircle(btnX, btnY, 28);
+    
+    btnBg.lineStyle(2, 0xffffff, 0.5);
+    btnBg.strokeCircle(btnX, btnY, 28);
+
+    const btnText = this.scene.add.text(btnX, btnY, '🗺️', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+      color: '#ffffff',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    const button = this.scene.add.zone(btnX, btnY, 56, 56)
+      .setInteractive({ useHandCursor: true });
+
+    button.on('pointerdown', () => btnBg.setScale(0.9));
+    button.on('pointerup', () => {
+      btnBg.setScale(1);
+      this.toggleMapPanel();
+      EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+    });
+    button.on('pointerout', () => btnBg.setScale(1));
+
+    this.mapButton = this.scene.add.container(btnX, btnY, [btnBg, btnText, button]);
+    this.container.add(this.mapButton);
+  }
+
+  private toggleMapPanel(): void {
+    if (!this.regionMapPanel) return;
+    
+    this.closeAllPanels();
+    this.regionMapPanel.openPanel();
+  }
+
+  private closeAllPanels(): void {
+    if (this.synthesisPanel?.visible) {
+      this.toggleSynthesisPanel();
+    }
+    if (this.collectionPanel?.visible) {
+      this.toggleCollectionPanel();
+    }
+    if (this.infoCenterPanel?.visible) {
+      this.toggleInfoCenterPanel();
+    }
+    if (this.visitorPanel?.visible) {
+      this.toggleVisitorPanel();
+    }
+    if (this.regionMapPanel && (this.regionMapPanel as any).isOpen) {
+      this.regionMapPanel.closePanel();
+    }
   }
 
   private updateVisitorRedDot(): void {
@@ -1284,6 +1354,46 @@ export class UIManager {
     };
     EventManager.getInstance().on('visitor:panel_opened', onVisitorPanelOpened);
     this.uiListeners.push({ event: 'visitor:panel_opened', callback: onVisitorPanelOpened });
+
+    const onRegionUnlocked = (data: GameEvents['region:unlocked']) => {
+      this.showToast(`🎉 解锁新区域：${data.regionName}`, 4000, 0xffee66);
+      if (this.regionMapPanel) {
+        this.regionMapPanel.refreshPanel();
+      }
+    };
+    EventManager.getInstance().on('region:unlocked', onRegionUnlocked);
+    this.uiListeners.push({ event: 'region:unlocked', callback: onRegionUnlocked });
+
+    const onRegionLockedAttempt = (data: GameEvents['region:locked_attempt']) => {
+      const conditions = data.missingConditions.join('、');
+      this.showToast(`🔒 ${data.regionName} 未解锁：${conditions}`, 3500, 0xff6b6b);
+    };
+    EventManager.getInstance().on('region:locked_attempt', onRegionLockedAttempt);
+    this.uiListeners.push({ event: 'region:locked_attempt', callback: onRegionLockedAttempt });
+
+    const onRegionMapOpened = (_data: GameEvents['region:map_opened']) => {
+      if (this.regionMapPanel) {
+        this.regionMapPanel.refreshPanel();
+      }
+    };
+    EventManager.getInstance().on('region:map_opened', onRegionMapOpened);
+    this.uiListeners.push({ event: 'region:map_opened', callback: onRegionMapOpened });
+
+    const onRegionEntered = (data: GameEvents['region:entered']) => {
+      if (this.regionMapPanel) {
+        this.regionMapPanel.refreshPanel();
+      }
+    };
+    EventManager.getInstance().on('region:entered', onRegionEntered);
+    this.uiListeners.push({ event: 'region:entered', callback: onRegionEntered });
+
+    const onQuickEntryAction = (data: GameEvents['quickentry:action']) => {
+      if (data.type === 'map') {
+        this.toggleMapPanel();
+      }
+    };
+    EventManager.getInstance().on('quickentry:action', onQuickEntryAction);
+    this.uiListeners.push({ event: 'quickentry:action', callback: onQuickEntryAction });
   }
 
   private showToast(message: string, duration: number = 2000, color: number = 0xffffff): void {
@@ -3886,6 +3996,10 @@ export class UIManager {
       EventManager.getInstance().off(event, callback);
     });
     this.uiListeners = [];
+    if (this.regionMapPanel) {
+      this.regionMapPanel.destroy();
+      this.regionMapPanel = null;
+    }
     if (this.settingsPanel) {
       this.settingsPanel.destroy();
     }

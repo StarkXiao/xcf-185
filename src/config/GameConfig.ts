@@ -19,6 +19,11 @@ import {
   RedDotState,
   TaskReward,
   Region,
+  RegionConfig,
+  RegionUnlockState,
+  RegionUnlockConditionType,
+  RegionEntrance,
+  Position,
   DailyReward,
   DailyRewardState,
   TutorialConditionType,
@@ -67,7 +72,7 @@ export const OBSTACLE_CONFIG = {
   avoidRadius: 200
 };
 
-export const REGIONS: Region[] = [
+export const REGION_CONFIGS: RegionConfig[] = [
   {
     id: 'moonlight_glade',
     name: '月光林地',
@@ -78,7 +83,15 @@ export const REGIONS: Region[] = [
     height: 600,
     preferredPetals: [PetalType.MOONLIGHT, PetalType.STARLIGHT],
     baseHeat: 1.0,
-    color: 0x88ccff
+    color: 0x88ccff,
+    unlockConditions: [],
+    isLockedByDefault: false,
+    entryPoint: { x: 400, y: 400 },
+    difficulty: 'easy',
+    spawnRateMultiplier: 1.0,
+    rareDropBoost: 0,
+    ambiance: { bgTint: 0x0a0a2e, particleColor: 0x88ccff, fogDensity: 0.05 },
+    navigationIcon: '🌙'
   },
   {
     id: 'starlight_lake',
@@ -90,7 +103,21 @@ export const REGIONS: Region[] = [
     height: 600,
     preferredPetals: [PetalType.STARLIGHT, PetalType.MOONLIGHT, PetalType.DEW],
     baseHeat: 1.0,
-    color: 0xffe66d
+    color: 0xffe66d,
+    unlockConditions: [
+      {
+        type: RegionUnlockConditionType.TOTAL_COLLECTED,
+        targetCount: 10,
+        description: '累计收集10朵花瓣'
+      }
+    ],
+    isLockedByDefault: true,
+    entryPoint: { x: 1100, y: 400 },
+    difficulty: 'easy',
+    spawnRateMultiplier: 1.1,
+    rareDropBoost: 0.05,
+    ambiance: { bgTint: 0x0e0e2a, particleColor: 0xffe66d, fogDensity: 0.08 },
+    navigationIcon: '⭐'
   },
   {
     id: 'dew_valley',
@@ -102,7 +129,27 @@ export const REGIONS: Region[] = [
     height: 500,
     preferredPetals: [PetalType.DEW, PetalType.GLOWING],
     baseHeat: 1.0,
-    color: 0xa8e6cf
+    color: 0xa8e6cf,
+    unlockConditions: [
+      {
+        type: RegionUnlockConditionType.PETAL_UNLOCKED,
+        target: PetalType.STARLIGHT,
+        targetCount: 1,
+        description: '解锁星光花瓣'
+      },
+      {
+        type: RegionUnlockConditionType.TOTAL_SYNTHESIZED,
+        targetCount: 1,
+        description: '完成1次合成'
+      }
+    ],
+    isLockedByDefault: true,
+    entryPoint: { x: 350, y: 1050 },
+    difficulty: 'medium',
+    spawnRateMultiplier: 1.0,
+    rareDropBoost: 0.08,
+    ambiance: { bgTint: 0x0a1a1a, particleColor: 0xa8e6cf, fogDensity: 0.15 },
+    navigationIcon: '💧'
   },
   {
     id: 'glowing_cave',
@@ -114,7 +161,27 @@ export const REGIONS: Region[] = [
     height: 500,
     preferredPetals: [PetalType.GLOWING, PetalType.DREAM],
     baseHeat: 1.0,
-    color: 0xff9ecb
+    color: 0xff9ecb,
+    unlockConditions: [
+      {
+        type: RegionUnlockConditionType.PETAL_UNLOCKED,
+        target: PetalType.DEW,
+        targetCount: 1,
+        description: '解锁露珠花瓣'
+      },
+      {
+        type: RegionUnlockConditionType.REGION_UNLOCKED,
+        target: 'dew_valley',
+        description: '解锁晨露山谷'
+      }
+    ],
+    isLockedByDefault: true,
+    entryPoint: { x: 950, y: 1050 },
+    difficulty: 'medium',
+    spawnRateMultiplier: 0.9,
+    rareDropBoost: 0.12,
+    ambiance: { bgTint: 0x1a0a1a, particleColor: 0xff9ecb, fogDensity: 0.2 },
+    navigationIcon: '✨'
   },
   {
     id: 'dream_garden',
@@ -126,7 +193,32 @@ export const REGIONS: Region[] = [
     height: 500,
     preferredPetals: [PetalType.DREAM, PetalType.ETERNAL, PetalType.WAKEUP],
     baseHeat: 0.8,
-    color: 0xc8a2ff
+    color: 0xc8a2ff,
+    unlockConditions: [
+      {
+        type: RegionUnlockConditionType.PETAL_UNLOCKED,
+        target: PetalType.GLOWING,
+        targetCount: 1,
+        description: '解锁荧光花瓣'
+      },
+      {
+        type: RegionUnlockConditionType.TOTAL_COLLECTED,
+        targetCount: 50,
+        description: '累计收集50朵花瓣'
+      },
+      {
+        type: RegionUnlockConditionType.PLAY_TIME,
+        targetCount: 300000,
+        description: '游戏时长达到5分钟'
+      }
+    ],
+    isLockedByDefault: true,
+    entryPoint: { x: 750, y: 1650 },
+    difficulty: 'hard',
+    spawnRateMultiplier: 0.8,
+    rareDropBoost: 0.2,
+    ambiance: { bgTint: 0x150a2a, particleColor: 0xc8a2ff, fogDensity: 0.12 },
+    navigationIcon: '🌸'
   },
   {
     id: 'eternal_temple',
@@ -138,9 +230,76 @@ export const REGIONS: Region[] = [
     height: 400,
     preferredPetals: [PetalType.ETERNAL, PetalType.DREAM],
     baseHeat: 0.6,
-    color: 0xffd700
+    color: 0xffd700,
+    unlockConditions: [
+      {
+        type: RegionUnlockConditionType.PETAL_UNLOCKED,
+        target: PetalType.DREAM,
+        targetCount: 1,
+        description: '解锁梦境花瓣'
+      },
+      {
+        type: RegionUnlockConditionType.REGION_UNLOCKED,
+        target: 'dream_garden',
+        description: '解锁梦境花园'
+      },
+      {
+        type: RegionUnlockConditionType.TOTAL_SYNTHESIZED,
+        targetCount: 10,
+        description: '累计完成10次合成'
+      }
+    ],
+    isLockedByDefault: true,
+    entryPoint: { x: 1250, y: 1000 },
+    difficulty: 'legendary',
+    spawnRateMultiplier: 0.5,
+    rareDropBoost: 0.4,
+    ambiance: { bgTint: 0x2a1a0a, particleColor: 0xffd700, fogDensity: 0.08 },
+    navigationIcon: '👑'
   }
 ];
+
+export const REGIONS: Region[] = REGION_CONFIGS.map(config => ({
+  id: config.id,
+  name: config.name,
+  description: config.description,
+  x: config.x,
+  y: config.y,
+  width: config.width,
+  height: config.height,
+  preferredPetals: config.preferredPetals,
+  baseHeat: config.baseHeat,
+  color: config.color
+}));
+
+export const REGION_ENTRANCES: RegionEntrance[] = [
+  { regionId: 'moonlight_glade', entranceX: 700, entranceY: 400, exitX: 800, exitY: 400, width: 40, height: 80 },
+  { regionId: 'starlight_lake', entranceX: 800, entranceY: 400, exitX: 700, exitY: 400, width: 40, height: 80 },
+  { regionId: 'moonlight_glade', entranceX: 400, entranceY: 700, exitX: 400, exitY: 800, width: 80, height: 40 },
+  { regionId: 'dew_valley', entranceX: 350, entranceY: 800, exitX: 350, exitY: 700, width: 80, height: 40 },
+  { regionId: 'starlight_lake', entranceX: 950, entranceY: 700, exitX: 950, exitY: 800, width: 80, height: 40 },
+  { regionId: 'glowing_cave', entranceX: 950, entranceY: 800, exitX: 950, exitY: 700, width: 80, height: 40 },
+  { regionId: 'dew_valley', entranceX: 350, entranceY: 1300, exitX: 350, exitY: 1400, width: 80, height: 40 },
+  { regionId: 'dream_garden', entranceX: 750, entranceY: 1400, exitX: 750, exitY: 1300, width: 80, height: 40 },
+  { regionId: 'glowing_cave', entranceX: 1100, entranceY: 1000, exitX: 1100, exitY: 1000, width: 40, height: 80 },
+  { regionId: 'eternal_temple', entranceX: 1100, entranceY: 1000, exitX: 1200, exitY: 1000, width: 40, height: 80 }
+];
+
+export function getInitialRegionUnlockStates(): RegionUnlockState[] {
+  return REGION_CONFIGS.map(config => ({
+    regionId: config.id,
+    isUnlocked: !config.isLockedByDefault,
+    unlockedAt: config.isLockedByDefault ? undefined : Date.now(),
+    visitCount: config.isLockedByDefault ? 0 : 1,
+    firstVisitAt: config.isLockedByDefault ? undefined : Date.now(),
+    totalTimeSpent: 0
+  }));
+}
+
+export function getDefaultCurrentRegionId(): string {
+  const defaultRegion = REGION_CONFIGS.find(r => !r.isLockedByDefault);
+  return defaultRegion ? defaultRegion.id : REGION_CONFIGS[0].id;
+}
 
 export const HEAT_CONFIG = {
   heatIncreasePerCollect: 0.15,
@@ -1636,6 +1795,13 @@ export const DEFAULT_QUICK_ENTRIES: QuickEntry[] = [
     icon: '💡',
     color: 0xc8a2ff,
     enabled: true
+  },
+  {
+    id: QuickEntryType.MAP,
+    label: '地图',
+    icon: '🗺️',
+    color: 0x66b3ff,
+    enabled: true
   }
 ];
 
@@ -2121,7 +2287,10 @@ export const INITIAL_GAME_STATE: GameState = {
     lastTriggered: 0,
     count: 0
   })),
-  visitorSystem: JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE))
+  visitorSystem: JSON.parse(JSON.stringify(INITIAL_VISITOR_SYSTEM_STATE)),
+  regionUnlockStates: getInitialRegionUnlockStates(),
+  currentRegionId: getDefaultCurrentRegionId(),
+  lastRegionId: null
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -2145,7 +2314,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.2.0';
+export const SAVE_VERSION = '5.3.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;

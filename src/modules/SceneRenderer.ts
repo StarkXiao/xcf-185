@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { WORLD_WIDTH, WORLD_HEIGHT, GAME_WIDTH, GAME_HEIGHT, SKY_COLORS } from '../config/GameConfig';
+import { WORLD_WIDTH, WORLD_HEIGHT, GAME_WIDTH, GAME_HEIGHT, SKY_COLORS, REGION_CONFIGS } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
-import { TimeOfDay, WeatherType } from '../types';
+import { TimeOfDay, WeatherType, RegionConfig } from '../types';
 
 export class SceneRenderer {
   private scene: Phaser.Scene;
@@ -11,10 +11,12 @@ export class SceneRenderer {
   private starParticles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private lightBeams: Phaser.GameObjects.Graphics[] = [];
   private ambientLightOverlay: Phaser.GameObjects.Graphics | null = null;
+  private regionTintOverlay: Phaser.GameObjects.Graphics | null = null;
   private skyColorTween: Phaser.Tweens.Tween | null = null;
   private eventListeners: Array<{ event: string; callback: (data: any) => void }> = [];
   private currentSkyColor: number = 0x0a0514;
   private targetSkyColor: number = 0x0a0514;
+  private currentRegionConfig: RegionConfig | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -27,8 +29,16 @@ export class SceneRenderer {
     this.createLightBeams();
     this.createForestSilhouette();
     this.createAmbientLightOverlay();
+    this.createRegionTintOverlay();
     this.setupEventListeners();
     this.updateInitialEnvironment();
+    this.updateInitialRegion();
+  }
+
+  private createRegionTintOverlay(): void {
+    this.regionTintOverlay = this.scene.add.graphics();
+    this.regionTintOverlay.setDepth(-8);
+    this.regionTintOverlay.setScrollFactor(0);
   }
 
   private setupEventListeners(): void {
@@ -48,13 +58,19 @@ export class SceneRenderer {
       this.updateAmbientLight();
     };
 
+    const onRegionEntered = (data: any) => {
+      this.updateRegionVisuals(data.regionId);
+    };
+
     EventManager.getInstance().on('time:changed', onTimeChanged);
     EventManager.getInstance().on('weather:changed', onWeatherChanged);
     EventManager.getInstance().on('environment:updated', onEnvironmentUpdated);
+    EventManager.getInstance().on('region:entered', onRegionEntered);
 
     this.eventListeners.push({ event: 'time:changed', callback: onTimeChanged });
     this.eventListeners.push({ event: 'weather:changed', callback: onWeatherChanged });
     this.eventListeners.push({ event: 'environment:updated', callback: onEnvironmentUpdated });
+    this.eventListeners.push({ event: 'region:entered', callback: onRegionEntered });
   }
 
   private updateInitialEnvironment(): void {
@@ -68,6 +84,61 @@ export class SceneRenderer {
         state.environment.weather.currentWeather,
         state.environment.weather.weatherIntensity
       );
+    }
+  }
+
+  private updateInitialRegion(): void {
+    const state = SaveManager.getInstance().getGameState();
+    if (state.currentRegionId) {
+      this.updateRegionVisuals(state.currentRegionId);
+    }
+  }
+
+  public setRegionAmbiance(ambiance: any): void {
+    if (!ambiance) return;
+
+    if (this.regionTintOverlay) {
+      this.regionTintOverlay.clear();
+      const fogDensity = ambiance.fogDensity || 0;
+      if (fogDensity > 0) {
+        this.scene.tweens.addCounter({
+          from: 0,
+          to: fogDensity,
+          duration: 500,
+          ease: 'Sine.easeInOut',
+          onUpdate: (tween) => {
+            if (this.regionTintOverlay) {
+              this.regionTintOverlay.clear();
+              this.regionTintOverlay.fillStyle(ambiance.bgTint || 0x000000, tween.getValue());
+              this.regionTintOverlay.fillRect(0, 0, this.scene.scale.width, this.scene.scale.height);
+            }
+          }
+        });
+      }
+    }
+
+    if (this.fireflyParticles && ambiance.particleColor) {
+      this.fireflyParticles.setParticleTint(ambiance.particleColor);
+    }
+
+    if (ambiance.bgTint) {
+      this.scene.cameras.main.setBackgroundColor(ambiance.bgTint);
+    }
+  }
+
+  private updateRegionVisuals(regionId: string): void {
+    const regionConfig = REGION_CONFIGS.find(rc => rc.id === regionId);
+    this.currentRegionConfig = regionConfig || null;
+    if (this.regionTintOverlay && regionConfig?.ambiance) {
+      this.regionTintOverlay.clear();
+      const fogDensity = regionConfig.ambiance.fogDensity || 0;
+      if (fogDensity > 0) {
+        this.regionTintOverlay.fillStyle(regionConfig.ambiance.bgTint || 0x000000, fogDensity);
+        this.regionTintOverlay.fillRect(0, 0, this.scene.scale.width, this.scene.scale.height);
+      }
+    }
+    if (this.fireflyParticles && regionConfig?.ambiance?.particleColor) {
+      this.fireflyParticles.setParticleTint(regionConfig.ambiance.particleColor);
     }
   }
 
@@ -414,6 +485,9 @@ export class SceneRenderer {
     }
     if (this.ambientLightOverlay) {
       this.ambientLightOverlay.destroy();
+    }
+    if (this.regionTintOverlay) {
+      this.regionTintOverlay.destroy();
     }
   }
 }
