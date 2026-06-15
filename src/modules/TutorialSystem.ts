@@ -8,7 +8,8 @@ import {
   TutorialValidationType,
   TutorialSkipConfig,
   TutorialGuideProgress,
-  GameEvents
+  GameEvents,
+  PetalType
 } from '../types';
 import { SettingsManager } from '../managers/SettingsManager';
 import { SaveManager } from '../managers/SaveManager';
@@ -19,6 +20,17 @@ type EventListenerEntry = {
   event: keyof GameEvents;
   callback: (data: any) => void;
 };
+
+interface ValidationContext {
+  elementId?: string;
+  petalType?: string;
+  petalCount?: number;
+  recipeId?: string;
+  areaX?: number;
+  areaY?: number;
+  tapCount?: number;
+  elapsedMs?: number;
+}
 
 export class TutorialSystem {
   private scene: Phaser.Scene;
@@ -31,6 +43,7 @@ export class TutorialSystem {
   private validationTimer: Phaser.Time.TimerEvent | null = null;
   private stepDelayTimer: Phaser.Time.TimerEvent | null = null;
   private skipConfirmVisible: boolean = false;
+  private currentStepUnlocked: boolean = false;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -41,24 +54,28 @@ export class TutorialSystem {
 
     if (!tutorialState.completed && !tutorialState.dismissed) {
       this.isActive = true;
-      const stepIndex = this.findNextUnlockedStep(tutorialState);
+      const stepIndex = this.findCurrentStepIndex(tutorialState);
       this.currentStep = tutorialState.steps[stepIndex] || tutorialState.steps[0];
+      this.currentStepUnlocked = this.isStepUnlocked(this.currentStep);
       SettingsManager.getInstance().setCurrentTutorialStep(stepIndex);
       this.createTutorialUI();
       this.setupEventListeners();
-      this.checkAndShowCurrentStep();
+      this.showStepContent();
     }
   }
 
-  private findNextUnlockedStep(tutorialState: TutorialState): number {
+  private findCurrentStepIndex(tutorialState: TutorialState): number {
     for (let i = tutorialState.currentStep; i < tutorialState.steps.length; i++) {
-      const step = tutorialState.steps[i];
-      if (step.completed) continue;
-      if (!step.unlockCondition || this.checkCondition(step.unlockCondition)) {
+      if (!tutorialState.steps[i].completed) {
         return i;
       }
     }
-    return tutorialState.currentStep;
+    return Math.min(tutorialState.currentStep, tutorialState.steps.length - 1);
+  }
+
+  private isStepUnlocked(step: TutorialStep): boolean {
+    if (!step.unlockCondition) return true;
+    return this.checkCondition(step.unlockCondition);
   }
 
   private checkCondition(condition: TutorialCondition): boolean {
@@ -105,31 +122,51 @@ export class TutorialSystem {
     }
   }
 
-  private validateInteraction(step: TutorialStep): boolean {
+  private validateInteraction(step: TutorialStep, context: ValidationContext): boolean {
     if (!step.validation) return true;
 
-    const tutorialState = SettingsManager.getInstance().getTutorialState();
-    const attempts = tutorialState.validationAttempts[step.id] || 0;
     const validation = step.validation;
 
     switch (validation.type) {
       case TutorialValidationType.CLICK_ELEMENT:
-        return step.highlightElement === validation.target;
+        if (!validation.target || !context.elementId) return false;
+        return context.elementId === validation.target;
 
       case TutorialValidationType.COLLECT_PETAL:
-        return step.actionRequired === 'collect';
+        if (validation.target) {
+          return context.petalType === validation.target;
+        }
+        return !!context.petalType && (context.petalCount || 0) > 0;
 
       case TutorialValidationType.MOVE_TO_AREA:
-        return step.actionRequired === 'move';
+        if (step.targetArea) {
+          if (context.areaX === undefined || context.areaY === undefined) return false;
+          const area = step.targetArea;
+          const tolerance = validation.tolerance || 0;
+          return (
+            context.areaX >= area.x - tolerance &&
+            context.areaX <= area.x + area.width + tolerance &&
+            context.areaY >= area.y - tolerance &&
+            context.areaY <= area.y + area.height + tolerance
+          );
+        }
+        return true;
 
       case TutorialValidationType.SYNTHESIZE_RECIPE:
-        return step.actionRequired === 'synthesize' || step.highlightElement === 'synthesis_button';
+        if (validation.target && context.recipeId) {
+          return context.recipeId === validation.target;
+        }
+        return !!context.recipeId;
 
       case TutorialValidationType.TAP_COUNT:
-        return validation.count ? attempts >= validation.count : true;
+        const tapCount = context.tapCount || 0;
+        const requiredCount = validation.count || 1;
+        return tapCount >= requiredCount;
 
       case TutorialValidationType.WAIT_DURATION:
-        return true;
+        const elapsed = context.elapsedMs || 0;
+        const required = validation.duration || 1000;
+        return elapsed >= required;
 
       default:
         return true;
@@ -218,7 +255,8 @@ export class TutorialSystem {
       if (targetIndex !== -1) {
         SettingsManager.getInstance().setCurrentTutorialStep(targetIndex);
         this.currentStep = tutorialState.steps[targetIndex];
-        this.checkAndShowCurrentStep();
+        this.currentStepUnlocked = this.isStepUnlocked(this.currentStep);
+        this.showStepContent();
         return;
       }
     }
@@ -341,30 +379,21 @@ export class TutorialSystem {
   private advanceToNextStep(): void {
     const tutorialState = SettingsManager.getInstance().getTutorialState();
     const currentIndex = tutorialState.steps.findIndex(s => s.id === this.currentStep?.id);
-    let nextIndex = currentIndex + 1;
-
-    while (nextIndex < tutorialState.steps.length) {
-      const nextStep = tutorialState.steps[nextIndex];
-      if (nextStep.completed) {
-        nextIndex++;
-        continue;
-      }
-      if (nextStep.unlockCondition && !this.checkCondition(nextStep.unlockCondition)) {
-        EventManager.getInstance().emit('tutorial:condition_check', {
-          stepId: nextStep.id,
-          conditionType: nextStep.unlockCondition.type,
-          met: false
-        });
-        nextIndex++;
-        continue;
-      }
-      break;
-    }
+    const nextIndex = currentIndex + 1;
 
     if (nextIndex < tutorialState.steps.length) {
-      SettingsManager.getInstance().setCurrentTutorialStep(nextIndex);
-      this.currentStep = tutorialState.steps[nextIndex];
-      this.checkAndShowCurrentStep();
+      const nextStep = tutorialState.steps[nextIndex];
+      if (!nextStep.completed) {
+        SettingsManager.getInstance().setCurrentTutorialStep(nextIndex);
+        this.currentStep = nextStep;
+        this.currentStepUnlocked = this.isStepUnlocked(nextStep);
+        this.showStepContent();
+      } else {
+        SettingsManager.getInstance().setCurrentTutorialStep(nextIndex);
+        this.currentStep = nextStep;
+        this.currentStepUnlocked = true;
+        this.advanceToNextStep();
+      }
     } else {
       this.completeAllSteps();
     }
@@ -433,12 +462,13 @@ export class TutorialSystem {
 
     this.isActive = true;
     const updatedState = SettingsManager.getInstance().getTutorialState();
-    const stepIndex = this.findNextUnlockedStep(updatedState);
+    const stepIndex = this.findCurrentStepIndex(updatedState);
     this.currentStep = updatedState.steps[stepIndex] || updatedState.steps[0];
+    this.currentStepUnlocked = this.isStepUnlocked(this.currentStep);
     SettingsManager.getInstance().setCurrentTutorialStep(stepIndex);
     this.createTutorialUI();
     this.setupEventListeners();
-    this.checkAndShowCurrentStep();
+    this.showStepContent();
   }
 
   private createTutorialUI(): void {
@@ -456,48 +486,63 @@ export class TutorialSystem {
   }
 
   private setupEventListeners(): void {
-    const onPetalCollected = () => {
-      if (this.isActive && this.currentStep?.actionRequired === 'collect') {
-        if (this.validateInteraction(this.currentStep)) {
+    const onPetalCollected = (data: { type: string; count: number }) => {
+      if (this.isActive && this.currentStep?.actionRequired === 'collect' && this.currentStepUnlocked) {
+        const context: ValidationContext = {
+          petalType: data.type,
+          petalCount: data.count
+        };
+        if (this.validateInteraction(this.currentStep, context)) {
           EventManager.getInstance().emit('tutorial:validation_passed', {
             stepId: this.currentStep.id,
             guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
           });
           this.completeCurrentStep();
-        } else {
+        } else if (this.currentStep.validation) {
           this.handleValidationFailure(this.currentStep);
         }
       }
+      this.recheckUnlockConditions();
     };
     EventManager.getInstance().on('petal:collected', onPetalCollected);
     this.uiListeners.push({ event: 'petal:collected', callback: onPetalCollected });
 
     const onRangeUpdated = () => {
-      if (this.isActive && this.currentStep?.id === 'tutorial_range') {
-        if (this.validateInteraction(this.currentStep)) {
-          EventManager.getInstance().emit('tutorial:validation_passed', {
-            stepId: this.currentStep.id,
-            guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
-          });
-          this.completeCurrentStep();
+      if (this.isActive && this.currentStep?.id === 'tutorial_range' && this.currentStepUnlocked) {
+        if (this.currentStep.validation) {
+          const context: ValidationContext = {};
+          if (this.validateInteraction(this.currentStep, context)) {
+            EventManager.getInstance().emit('tutorial:validation_passed', {
+              stepId: this.currentStep.id,
+              guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+            });
+            this.completeCurrentStep();
+          } else {
+            this.handleValidationFailure(this.currentStep);
+          }
         } else {
-          this.handleValidationFailure(this.currentStep);
+          this.completeCurrentStep();
         }
       }
     };
     EventManager.getInstance().on('collectRange:updated', onRangeUpdated);
     this.uiListeners.push({ event: 'collectRange:updated', callback: onRangeUpdated });
 
-    const onGoalComplete = () => {
-      if (this.isActive && this.currentStep?.id === 'tutorial_goal') {
-        if (this.validateInteraction(this.currentStep)) {
-          EventManager.getInstance().emit('tutorial:validation_passed', {
-            stepId: this.currentStep.id,
-            guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
-          });
-          this.completeCurrentStep();
+    const onGoalComplete = (data: { goal: { id: string } }) => {
+      if (this.isActive && this.currentStep?.id === 'tutorial_goal' && this.currentStepUnlocked) {
+        const context: ValidationContext = {};
+        if (this.currentStep.validation) {
+          if (this.validateInteraction(this.currentStep, context)) {
+            EventManager.getInstance().emit('tutorial:validation_passed', {
+              stepId: this.currentStep.id,
+              guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+            });
+            this.completeCurrentStep();
+          } else {
+            this.handleValidationFailure(this.currentStep);
+          }
         } else {
-          this.handleValidationFailure(this.currentStep);
+          this.completeCurrentStep();
         }
       }
     };
@@ -505,40 +550,59 @@ export class TutorialSystem {
     this.uiListeners.push({ event: 'goal:completed', callback: onGoalComplete });
 
     const onSynthesisButtonClicked = () => {
-      if (this.isActive && this.currentStep?.actionRequired === 'click' && this.currentStep?.highlightElement === 'synthesis_button') {
-        if (this.validateInteraction(this.currentStep)) {
-          EventManager.getInstance().emit('tutorial:validation_passed', {
-            stepId: this.currentStep.id,
-            guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
-          });
-          this.completeCurrentStep();
+      if (this.isActive &&
+          this.currentStep?.actionRequired === 'click' &&
+          this.currentStep?.highlightElement === 'synthesis_button' &&
+          this.currentStepUnlocked) {
+        const context: ValidationContext = {
+          elementId: 'synthesis_button'
+        };
+        if (this.currentStep.validation) {
+          if (this.validateInteraction(this.currentStep, context)) {
+            EventManager.getInstance().emit('tutorial:validation_passed', {
+              stepId: this.currentStep.id,
+              guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+            });
+            this.completeCurrentStep();
+          } else {
+            this.handleValidationFailure(this.currentStep);
+          }
         } else {
-          this.handleValidationFailure(this.currentStep);
+          this.completeCurrentStep();
         }
       }
     };
     EventManager.getInstance().on('synthesis:button_clicked', onSynthesisButtonClicked);
     this.uiListeners.push({ event: 'synthesis:button_clicked', callback: onSynthesisButtonClicked });
 
-    const onSynthesisComplete = () => {
-      if (this.isActive && this.currentStep?.actionRequired === 'synthesize') {
-        if (this.validateInteraction(this.currentStep)) {
-          EventManager.getInstance().emit('tutorial:validation_passed', {
-            stepId: this.currentStep.id,
-            guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
-          });
-          this.completeCurrentStep();
+    const onSynthesisComplete = (data: { recipeId: string }) => {
+      if (this.isActive && this.currentStep?.actionRequired === 'synthesize' && this.currentStepUnlocked) {
+        const context: ValidationContext = {
+          recipeId: data.recipeId
+        };
+        if (this.currentStep.validation) {
+          if (this.validateInteraction(this.currentStep, context)) {
+            EventManager.getInstance().emit('tutorial:validation_passed', {
+              stepId: this.currentStep.id,
+              guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
+            });
+            this.completeCurrentStep();
+          } else {
+            this.handleValidationFailure(this.currentStep);
+          }
         } else {
-          this.handleValidationFailure(this.currentStep);
+          this.completeCurrentStep();
         }
       }
+      this.recheckUnlockConditions();
     };
     EventManager.getInstance().on('synthesis:complete', onSynthesisComplete);
     this.uiListeners.push({ event: 'synthesis:complete', callback: onSynthesisComplete });
 
     const onTutorialNext = (data: { step: TutorialStep }) => {
       this.currentStep = data.step;
-      this.checkAndShowCurrentStep();
+      this.currentStepUnlocked = this.isStepUnlocked(data.step);
+      this.showStepContent();
     };
     EventManager.getInstance().on('tutorial:next', onTutorialNext);
     this.uiListeners.push({ event: 'tutorial:next', callback: onTutorialNext });
@@ -549,21 +613,15 @@ export class TutorialSystem {
     EventManager.getInstance().on('tutorial:complete', onTutorialComplete);
     this.uiListeners.push({ event: 'tutorial:complete', callback: onTutorialComplete });
 
-    const onPetalCollectedConditionCheck = () => {
-      this.recheckLockedSteps();
-    };
-    EventManager.getInstance().on('petal:collected', onPetalCollectedConditionCheck);
-    this.uiListeners.push({ event: 'petal:collected', callback: onPetalCollectedConditionCheck });
-
     const onRecipeUnlockedConditionCheck = () => {
-      this.recheckLockedSteps();
+      this.recheckUnlockConditions();
     };
     EventManager.getInstance().on('synthesis:recipe_unlocked', onRecipeUnlockedConditionCheck);
     this.uiListeners.push({ event: 'synthesis:recipe_unlocked', callback: onRecipeUnlockedConditionCheck });
   }
 
-  private recheckLockedSteps(): void {
-    if (!this.isActive) return;
+  private recheckUnlockConditions(): void {
+    if (!this.isActive || !this.currentStep) return;
 
     const tutorialState = SettingsManager.getInstance().getTutorialState();
     const currentIndex = tutorialState.steps.findIndex(s => s.id === this.currentStep?.id);
@@ -587,15 +645,23 @@ export class TutorialSystem {
       }
     }
 
-    if (this.currentStep?.unlockCondition && !this.checkCondition(this.currentStep.unlockCondition)) {
-      return;
+    if (!this.currentStepUnlocked && this.currentStep.unlockCondition) {
+      const nowUnlocked = this.checkCondition(this.currentStep.unlockCondition);
+      if (nowUnlocked) {
+        this.currentStepUnlocked = true;
+        EventManager.getInstance().emit('tutorial:step_unlocked', {
+          stepId: this.currentStep.id,
+          guideId: tutorialState.activeGuideId
+        });
+        this.showStepContent();
+      }
     }
   }
 
-  private checkAndShowCurrentStep(): void {
+  private showStepContent(): void {
     if (!this.currentStep) return;
 
-    if (this.currentStep.unlockCondition && !this.checkCondition(this.currentStep.unlockCondition)) {
+    if (!this.currentStepUnlocked) {
       this.showLockedStepUI(this.currentStep);
       return;
     }
@@ -617,7 +683,7 @@ export class TutorialSystem {
     this.createTutorialUI();
 
     const cardWidth = GAME_WIDTH - 80;
-    const cardHeight = 160;
+    const cardHeight = 200;
     const cardX = 40;
     const cardY = GAME_HEIGHT - cardHeight - 80;
 
@@ -630,23 +696,25 @@ export class TutorialSystem {
 
     const lockIcon = this.scene.add.text(
       cardX + cardWidth / 2,
-      cardY + 40,
-      '🔒',
+      cardY + 45,
+      '🔒 即将解锁',
       {
         fontFamily: 'Arial',
-        fontSize: '28px'
+        fontSize: '20px',
+        color: '#ffd93d',
+        fontStyle: 'bold'
       }
     ).setOrigin(0.5);
     this.container.add(lockIcon);
 
     const titleText = this.scene.add.text(
       cardX + cardWidth / 2,
-      cardY + 80,
+      cardY + 85,
       step.title,
       {
         fontFamily: 'Arial',
         fontSize: '18px',
-        color: '#888888'
+        color: '#aaaaaa'
       }
     ).setOrigin(0.5);
     this.container.add(titleText);
@@ -654,25 +722,61 @@ export class TutorialSystem {
     const conditionDesc = this.getConditionDescription(step.unlockCondition!);
     const conditionText = this.scene.add.text(
       cardX + cardWidth / 2,
-      cardY + 115,
+      cardY + 120,
       `解锁条件: ${conditionDesc}`,
       {
         fontFamily: 'Arial',
         fontSize: '13px',
-        color: '#aaaaaa',
+        color: '#888888',
         wordWrap: { width: cardWidth - 40 },
         align: 'center'
       }
     ).setOrigin(0.5);
     this.container.add(conditionText);
+
+    const progressInfo = this.getConditionProgress(step.unlockCondition!);
+    if (progressInfo) {
+      const progressText = this.scene.add.text(
+        cardX + cardWidth / 2,
+        cardY + 155,
+        progressInfo,
+        {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: '#ffd93d',
+          fontStyle: 'bold'
+        }
+      ).setOrigin(0.5);
+      this.container.add(progressText);
+    }
+
+    const skipAllowed = step.skipConfig?.allowed ?? false;
+    if (skipAllowed) {
+      const skipButton = this.scene.add.text(
+        cardX + cardWidth / 2,
+        cardY + cardHeight - 30,
+        '跳过此步骤',
+        {
+          fontFamily: 'Arial',
+          fontSize: '13px',
+          color: '#888888'
+        }
+      ).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+      skipButton.on('pointerup', () => {
+        this.trySkipCurrentStep();
+        EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
+      });
+      this.container.add(skipButton);
+    }
   }
 
   private getConditionDescription(condition: TutorialCondition): string {
     switch (condition.type) {
       case TutorialConditionType.PETAL_COUNT:
-        return `收集 ${condition.count || 0} 朵${condition.target || ''}花瓣`;
+        return `收集 ${condition.count || 0} 朵${this.getPetalName(condition.target)}花瓣`;
       case TutorialConditionType.PETAL_UNLOCKED:
-        return `解锁${condition.target || ''}花瓣`;
+        return `解锁${this.getPetalName(condition.target)}花瓣`;
       case TutorialConditionType.RECIPE_UNLOCKED:
         return `解锁配方 ${condition.target || ''}`;
       case TutorialConditionType.TOTAL_COLLECTED:
@@ -685,6 +789,62 @@ export class TutorialSystem {
         return `游戏时长达到 ${condition.count || 0} 秒`;
       default:
         return '未知条件';
+    }
+  }
+
+  private getPetalName(type?: string | PetalType): string {
+    if (!type) return '';
+    const names: Record<string, string> = {
+      'moonlight': '月光',
+      'starlight': '星光',
+      'dew': '露珠',
+      'glowing': '荧光',
+      'dream': '梦境',
+      'eternal': '永恒',
+      'wakeup': '唤醒'
+    };
+    return names[type as string] || type;
+  }
+
+  private getConditionProgress(condition: TutorialCondition): string | null {
+    const gameState = SaveManager.getInstance().getGameState();
+    const tutorialState = SettingsManager.getInstance().getTutorialState();
+
+    switch (condition.type) {
+      case TutorialConditionType.PETAL_COUNT:
+        if (condition.target && condition.count) {
+          const current = gameState.petals[condition.target as any] || 0;
+          return `${current} / ${condition.count}`;
+        }
+        return null;
+
+      case TutorialConditionType.TOTAL_COLLECTED:
+        if (condition.count) {
+          return `${gameState.totalCollected} / ${condition.count}`;
+        }
+        return null;
+
+      case TutorialConditionType.TOTAL_SYNTHESIZED:
+        if (condition.count) {
+          return `${gameState.totalSynthesized} / ${condition.count}`;
+        }
+        return null;
+
+      case TutorialConditionType.GAME_PLAYTIME:
+        if (condition.count) {
+          return `${Math.floor(gameState.playTime)} / ${condition.count} 秒`;
+        }
+        return null;
+
+      case TutorialConditionType.STEP_COMPLETED:
+        if (condition.target) {
+          const step = tutorialState.steps.find(s => s.id === condition.target);
+          return step?.completed ? '✅ 已完成' : '⏳ 未完成';
+        }
+        return null;
+
+      default:
+        return null;
     }
   }
 
@@ -933,9 +1093,12 @@ export class TutorialSystem {
       ).setInteractive({ useHandCursor: true });
 
       nextButtonZone.on('pointerup', () => {
-        if (this.currentStep?.validation && !this.validateInteraction(this.currentStep)) {
-          this.handleValidationFailure(this.currentStep);
-          return;
+        if (this.currentStep?.validation) {
+          const context: ValidationContext = { elementId: 'next_button' };
+          if (!this.validateInteraction(this.currentStep, context)) {
+            this.handleValidationFailure(this.currentStep);
+            return;
+          }
         }
         this.completeCurrentStep();
         EventManager.getInstance().emit('audio:play', { key: 'sfx_click', volume: 0.3 });
@@ -1001,12 +1164,16 @@ export class TutorialSystem {
     SettingsManager.getInstance().completeTutorialStep(this.currentStep.id);
   }
 
-  public notifyPlayerMoved(): void {
+  public notifyPlayerMoved(x?: number, y?: number): void {
     if (!this.isActive || !this.currentStep) return;
 
-    if (this.currentStep.actionRequired === 'move') {
+    if (this.currentStep.actionRequired === 'move' && this.currentStepUnlocked) {
+      const context: ValidationContext = {
+        areaX: x,
+        areaY: y
+      };
       if (this.currentStep.validation) {
-        if (this.validateInteraction(this.currentStep)) {
+        if (this.validateInteraction(this.currentStep, context)) {
           EventManager.getInstance().emit('tutorial:validation_passed', {
             stepId: this.currentStep.id,
             guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
@@ -1022,9 +1189,14 @@ export class TutorialSystem {
   }
 
   public notifySynthesisClicked(): void {
-    if (this.isActive && this.currentStep?.highlightElement === 'synthesis_button') {
+    if (this.isActive &&
+        this.currentStep?.highlightElement === 'synthesis_button' &&
+        this.currentStepUnlocked) {
+      const context: ValidationContext = {
+        elementId: 'synthesis_button'
+      };
       if (this.currentStep.validation) {
-        if (this.validateInteraction(this.currentStep)) {
+        if (this.validateInteraction(this.currentStep, context)) {
           EventManager.getInstance().emit('tutorial:validation_passed', {
             stepId: this.currentStep.id,
             guideId: SettingsManager.getInstance().getTutorialState().activeGuideId
@@ -1079,12 +1251,13 @@ export class TutorialSystem {
     if (!this.isActive) {
       const tutorialState = SettingsManager.getInstance().getTutorialState();
       this.isActive = true;
-      const stepIndex = this.findNextUnlockedStep(tutorialState);
+      const stepIndex = this.findCurrentStepIndex(tutorialState);
       this.currentStep = tutorialState.steps[stepIndex] || tutorialState.steps[0];
+      this.currentStepUnlocked = this.isStepUnlocked(this.currentStep);
       SettingsManager.getInstance().setCurrentTutorialStep(stepIndex);
       this.createTutorialUI();
       this.setupEventListeners();
-      this.checkAndShowCurrentStep();
+      this.showStepContent();
     }
   }
 
