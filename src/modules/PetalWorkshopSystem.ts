@@ -145,14 +145,37 @@ export class PetalWorkshopSystem {
       workshop.activeJobs = [];
       hasFix = true;
     } else {
-      const validJobs = workshop.activeJobs.filter(job => {
+      const now = Date.now();
+      const seenRecipeIds = new Set<string>();
+      const validJobs: WorkshopActiveJob[] = [];
+
+      workshop.activeJobs.forEach(job => {
         const recipe = this.recipes.find(r => r.id === job.recipeId);
-        if (!recipe) return false;
-        if (typeof job.batchCount !== 'number' || job.batchCount < 1 || job.batchCount > recipe.batchMax) return false;
-        if (typeof job.startTime !== 'number' || job.startTime <= 0) return false;
-        if (typeof job.duration !== 'number' || job.duration <= 0) return false;
-        return true;
+        if (!recipe) return;
+        if (typeof job.batchCount !== 'number' || job.batchCount < 1 || job.batchCount > recipe.batchMax) return;
+        if (typeof job.startTime !== 'number' || job.startTime <= 0) return;
+        if (typeof job.duration !== 'number' || job.duration <= 0) return;
+
+        if (job.startTime > now) {
+          job.startTime = now - job.duration;
+          hasFix = true;
+        }
+
+        const recipeState = workshop.recipeStates.find(rs => rs.recipeId === job.recipeId);
+        if (!recipeState || !recipeState.isUnlocked) return;
+
+        const expectedDuration = recipe.processingTime * job.batchCount;
+        if (job.duration !== expectedDuration) {
+          job.duration = expectedDuration;
+          hasFix = true;
+        }
+
+        if (seenRecipeIds.has(job.recipeId)) return;
+        seenRecipeIds.add(job.recipeId);
+
+        validJobs.push(job);
       });
+
       if (validJobs.length !== workshop.activeJobs.length) {
         workshop.activeJobs = validJobs;
         hasFix = true;
@@ -247,13 +270,7 @@ export class PetalWorkshopSystem {
     workshop.activeJobs = ongoingJobs;
 
     completedJobs.forEach(job => {
-      const recipe = this.recipes.find(r => r.id === job.recipeId);
-      if (!recipe) return;
-
-      const remainingDuration = 0;
-      this.scene.time.delayedCall(remainingDuration + 200, () => {
-        this.completeProcessing(job.id);
-      });
+      this.settleOfflineCompletedJob(job);
     });
 
     ongoingJobs.forEach(job => {
@@ -274,6 +291,70 @@ export class PetalWorkshopSystem {
     if (completedJobs.length > 0 || ongoingJobs.length > 0) {
       SaveManager.getInstance().saveGame(state);
     }
+  }
+
+  private settleOfflineCompletedJob(job: WorkshopActiveJob): void {
+    const state = SaveManager.getInstance().getGameState();
+    const workshop = state.workshopState;
+    const recipe = this.recipes.find(r => r.id === job.recipeId);
+    if (!recipe) return;
+
+    const effectiveSuccessRate = this.getEffectiveSuccessRate(job.recipeId);
+    const effectiveOutput = this.getEffectiveOutputCount(job.recipeId);
+
+    let totalOutput = 0;
+    for (let i = 0; i < job.batchCount; i++) {
+      if (Math.random() <= effectiveSuccessRate) {
+        totalOutput += effectiveOutput;
+      }
+    }
+
+    if (totalOutput > 0) {
+      SaveManager.getInstance().addPetal(recipe.output.type, totalOutput);
+    }
+
+    const recipeState = workshop.recipeStates.find(rs => rs.recipeId === job.recipeId);
+    if (recipeState) {
+      recipeState.totalProduced += totalOutput;
+      recipeState.totalBatchRuns += 1;
+      recipeState.lastProducedAt = Date.now();
+    }
+
+    this.updateProductionStats(workshop, recipe, job.batchCount, totalOutput, job);
+
+    const record: WorkshopProductionRecord = {
+      id: `rec_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      recipeId: job.recipeId,
+      batchCount: job.batchCount,
+      resultType: recipe.output.type,
+      resultCount: totalOutput,
+      timestamp: Date.now(),
+      processingTime: job.duration,
+      wasUpgraded: job.isUpgraded
+    };
+
+    workshop.productionRecords.unshift(record);
+    if (workshop.productionRecords.length > WORKSHOP_MAX_RECORDS) {
+      workshop.productionRecords = workshop.productionRecords.slice(0, WORKSHOP_MAX_RECORDS);
+    }
+
+    if (totalOutput > 0) {
+      EventManager.getInstance().emit('workshop:processing_complete', {
+        recipeId: job.recipeId,
+        batchCount: job.batchCount,
+        outputType: recipe.output.type,
+        outputCount: totalOutput
+      });
+      if (job.batchCount > 1) {
+        EventManager.getInstance().emit('workshop:batch_complete', {
+          recipeId: job.recipeId,
+          totalBatches: job.batchCount,
+          totalOutput: totalOutput
+        });
+      }
+    }
+
+    EventManager.getInstance().emit('workshop:stats_updated', { stats: workshop.productionStats });
   }
 
   public canProcess(recipeId: string, batchCount: number = 1): boolean {
