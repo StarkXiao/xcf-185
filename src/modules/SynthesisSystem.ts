@@ -151,6 +151,7 @@ export class SynthesisSystem {
     } else if (result.resultType === SynthesisResultType.MUTATION) {
       SaveManager.getInstance().addMutationPetal(result.output, result.count);
       SaveManager.getInstance().incrementSynthesized();
+      SaveManager.getInstance().updateCommissionForSynthesizeOutput(result.output, result.count);
       SaveManager.getInstance().addSynthesisRecord(recipe.id, result);
 
       EventManager.getInstance().emit('synthesis:mutation', result);
@@ -163,6 +164,7 @@ export class SynthesisSystem {
     } else {
       SaveManager.getInstance().addPetal(result.output, result.count);
       SaveManager.getInstance().incrementSynthesized();
+      SaveManager.getInstance().updateCommissionForSynthesizeOutput(result.output, result.count);
       SaveManager.getInstance().addSynthesisRecord(recipe.id, result);
 
       EventManager.getInstance().emit('synthesis:complete', result);

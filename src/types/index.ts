@@ -186,6 +186,8 @@ export interface GameState {
   efficiencyBoost?: number;
   collectionTasks: CollectionTask[];
   collectionTaskChains: CollectionTaskChain[];
+  commissionTasks: CollectionTask[];
+  commissionTaskChains: CollectionTaskChain[];
   redDotState: RedDotState;
   regionHeats: RegionHeat[];
   consecutiveCollect: ConsecutiveCollect | null;
@@ -578,12 +580,28 @@ export enum CollectionTaskStatus {
   CLAIMED = 'claimed'
 }
 
+export enum CommissionConditionType {
+  COLLECT_PETAL = 'collect_petal',
+  SYNTHESIZE_RECIPE = 'synthesize_recipe',
+  SYNTHESIZE_OUTPUT = 'synthesize_output',
+  TOTAL_COLLECTED = 'total_collected',
+  TOTAL_SYNTHESIZED = 'total_synthesized',
+  DISCOVER_MUTATION = 'discover_mutation'
+}
+
 export interface TaskReward {
   type: 'petal' | 'goal_progress' | 'unlock_recipe';
   petalType?: PetalType;
   count?: number;
   recipeId?: string;
   description: string;
+}
+
+export interface CommissionTaskCondition {
+  type: CommissionConditionType;
+  targetPetalType?: PetalType;
+  targetRecipeId?: string;
+  targetCount: number;
 }
 
 export interface CollectionTask {
@@ -601,6 +619,7 @@ export interface CollectionTask {
   recommendedRecipes: string[];
   regionSource: string;
   regionDescription: string;
+  conditions?: CommissionTaskCondition[];
 }
 
 export interface CollectionTaskChain {
@@ -629,6 +648,10 @@ export interface RedDotState {
   claimableTasks: string[];
   claimableChains: string[];
   lastViewedCollection: number;
+  commissionNewUnlocks: string[];
+  claimableCommissions: string[];
+  claimableCommissionChains: string[];
+  lastViewedCommission: number;
 }
 
 export interface DailyReward {
@@ -717,6 +740,11 @@ export interface GameEvents {
   'collectiontask:claimed': { task: CollectionTask };
   'collectionchain:completed': { chain: CollectionTaskChain };
   'collectionchain:claimed': { chain: CollectionTaskChain };
+  'commission:progress': { taskId: string; current: number; target: number };
+  'commission:completed': { task: CollectionTask };
+  'commission:claimed': { task: CollectionTask };
+  'commissionchain:completed': { chain: CollectionTaskChain };
+  'commissionchain:claimed': { chain: CollectionTaskChain };
   'reddot:updated': {};
   'dailylogin:checked': { state: DailyRewardState };
   'dailyreward:claimed': { reward: DailyReward; day: number };

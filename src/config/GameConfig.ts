@@ -15,6 +15,7 @@ import {
   CollectionTask,
   CollectionTaskChain,
   CollectionTaskStatus,
+  CommissionConditionType,
   RedDotState,
   TaskReward,
   Region,
@@ -1279,8 +1280,253 @@ export const INITIAL_RED_DOT_STATE: RedDotState = {
   collectionNewUnlocks: [],
   claimableTasks: [],
   claimableChains: [],
-  lastViewedCollection: 0
+  lastViewedCollection: 0,
+  commissionNewUnlocks: [],
+  claimableCommissions: [],
+  claimableCommissionChains: [],
+  lastViewedCommission: 0
 };
+
+export const INITIAL_COMMISSION_TASK_CHAINS: CollectionTaskChain[] = [
+  {
+    id: 'commission_chain_forest',
+    title: '森林委托',
+    description: '森林精灵们的委托，完成可获得丰厚奖励',
+    icon: '🌲',
+    color: 0x4aa85c,
+    tasks: [
+      'commission_collect_moonlight_20',
+      'commission_synthesize_recipe_3',
+      'commission_synthesize_glowing_3',
+      'commission_collect_starlight_15',
+      'commission_synthesize_dream_2'
+    ],
+    category: 'normal',
+    chainReward: {
+      type: 'petal',
+      petalType: PetalType.ETERNAL,
+      count: 2,
+      description: '完成全部森林委托，获得2朵永恒花瓣'
+    },
+    isChainComplete: false,
+    chainClaimed: false
+  },
+  {
+    id: 'commission_chain_master',
+    title: '炼金大师',
+    description: '挑战高级合成，成为真正的炼金大师',
+    icon: '⚗️',
+    color: 0xc8a2ff,
+    tasks: [
+      'commission_total_synthesize_20',
+      'commission_discover_mutation_3',
+      'commission_synthesize_eternal_1'
+    ],
+    category: 'normal',
+    chainReward: {
+      type: 'petal',
+      petalType: PetalType.WAKEUP,
+      count: 1,
+      description: '完成炼金大师委托，获得1朵唤醒之花'
+    },
+    isChainComplete: false,
+    chainClaimed: false
+  }
+];
+
+export const INITIAL_COMMISSION_TASKS: CollectionTask[] = [
+  {
+    id: 'commission_collect_moonlight_20',
+    chainId: 'commission_chain_forest',
+    title: '月光采集',
+    description: '收集20朵月光花瓣',
+    targetPetalType: PetalType.MOONLIGHT,
+    targetCount: 20,
+    currentCount: 0,
+    status: CollectionTaskStatus.IN_PROGRESS,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.GLOWING,
+      count: 2,
+      description: '奖励2朵荧光花瓣'
+    },
+    order: 1,
+    unlockHint: '初始委托，森林精灵需要月光花瓣',
+    recommendedRecipes: ['recipe_1', 'recipe_7'],
+    regionSource: '月光林地',
+    regionDescription: '森林东部的开阔草地',
+    conditions: [
+      { type: CommissionConditionType.COLLECT_PETAL, targetPetalType: PetalType.MOONLIGHT, targetCount: 20 }
+    ]
+  },
+  {
+    id: 'commission_synthesize_recipe_3',
+    chainId: 'commission_chain_forest',
+    title: '露珠炼金',
+    description: '使用配方合成3朵露珠花瓣',
+    targetPetalType: PetalType.DEW,
+    targetCount: 3,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DEW,
+      count: 2,
+      description: '奖励2朵露珠花瓣'
+    },
+    order: 2,
+    unlockHint: '完成「月光采集」后解锁',
+    recommendedRecipes: ['recipe_2'],
+    regionSource: '合成台',
+    regionDescription: '通过合成获得',
+    conditions: [
+      { type: CommissionConditionType.SYNTHESIZE_OUTPUT, targetPetalType: PetalType.DEW, targetCount: 3 }
+    ]
+  },
+  {
+    id: 'commission_synthesize_glowing_3',
+    chainId: 'commission_chain_forest',
+    title: '荧光绽放',
+    description: '合成3朵荧光花瓣',
+    targetPetalType: PetalType.GLOWING,
+    targetCount: 3,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'unlock_recipe',
+      recipeId: 'recipe_10',
+      description: '解锁特殊配方：永恒之径'
+    },
+    order: 3,
+    unlockHint: '完成「露珠炼金」后解锁',
+    recommendedRecipes: ['recipe_3', 'recipe_4'],
+    regionSource: '合成台',
+    regionDescription: '通过合成获得',
+    conditions: [
+      { type: CommissionConditionType.SYNTHESIZE_OUTPUT, targetPetalType: PetalType.GLOWING, targetCount: 3 }
+    ]
+  },
+  {
+    id: 'commission_collect_starlight_15',
+    chainId: 'commission_chain_forest',
+    title: '星光闪耀',
+    description: '通过合成或收集获得15朵星光花瓣',
+    targetPetalType: PetalType.STARLIGHT,
+    targetCount: 15,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DREAM,
+      count: 1,
+      description: '奖励1朵梦境花瓣'
+    },
+    order: 4,
+    unlockHint: '完成「荧光绽放」后解锁',
+    recommendedRecipes: ['recipe_1'],
+    regionSource: '星辰湖畔',
+    regionDescription: '森林中央的静谧湖泊',
+    conditions: [
+      { type: CommissionConditionType.COLLECT_PETAL, targetPetalType: PetalType.STARLIGHT, targetCount: 15 }
+    ]
+  },
+  {
+    id: 'commission_synthesize_dream_2',
+    chainId: 'commission_chain_forest',
+    title: '梦境编织',
+    description: '合成2朵梦境花瓣',
+    targetPetalType: PetalType.DREAM,
+    targetCount: 2,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DREAM,
+      count: 2,
+      description: '奖励2朵梦境花瓣'
+    },
+    order: 5,
+    unlockHint: '完成「星光闪耀」后解锁',
+    recommendedRecipes: ['recipe_4', 'recipe_5'],
+    regionSource: '合成台',
+    regionDescription: '通过合成获得',
+    conditions: [
+      { type: CommissionConditionType.SYNTHESIZE_OUTPUT, targetPetalType: PetalType.DREAM, targetCount: 2 }
+    ]
+  },
+  {
+    id: 'commission_total_synthesize_20',
+    chainId: 'commission_chain_master',
+    title: '初露锋芒',
+    description: '累计成功合成20次',
+    targetPetalType: PetalType.MOONLIGHT,
+    targetCount: 20,
+    currentCount: 0,
+    status: CollectionTaskStatus.IN_PROGRESS,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.STARLIGHT,
+      count: 10,
+      description: '奖励10朵星光花瓣'
+    },
+    order: 1,
+    unlockHint: '初始委托，累计合成次数',
+    recommendedRecipes: ['recipe_1', 'recipe_2', 'recipe_3'],
+    regionSource: '合成台',
+    regionDescription: '通过任意成功合成',
+    conditions: [
+      { type: CommissionConditionType.TOTAL_SYNTHESIZED, targetCount: 20 }
+    ]
+  },
+  {
+    id: 'commission_discover_mutation_3',
+    chainId: 'commission_chain_master',
+    title: '变异探索者',
+    description: '发现3种不同的变异花瓣',
+    targetPetalType: PetalType.MOONLIGHT_SHIMMER,
+    targetCount: 3,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.DREAM_PHANTOM,
+      count: 1,
+      description: '奖励1朵幻梦花瓣'
+    },
+    order: 2,
+    unlockHint: '完成「初露锋芒」后解锁，合成时会触发变异',
+    recommendedRecipes: ['recipe_1', 'recipe_2', 'recipe_3', 'recipe_4', 'recipe_5'],
+    regionSource: '合成台',
+    regionDescription: '合成时触发变异获得',
+    conditions: [
+      { type: CommissionConditionType.DISCOVER_MUTATION, targetCount: 3 }
+    ]
+  },
+  {
+    id: 'commission_synthesize_eternal_1',
+    chainId: 'commission_chain_master',
+    title: '永恒之誓',
+    description: '合成1朵永恒花瓣',
+    targetPetalType: PetalType.ETERNAL,
+    targetCount: 1,
+    currentCount: 0,
+    status: CollectionTaskStatus.LOCKED,
+    reward: {
+      type: 'petal',
+      petalType: PetalType.ETERNAL,
+      count: 1,
+      description: '额外奖励1朵永恒花瓣'
+    },
+    order: 3,
+    unlockHint: '完成「变异探索者」后解锁',
+    recommendedRecipes: ['recipe_5', 'recipe_10'],
+    regionSource: '合成台',
+    regionDescription: '通过高级合成获得',
+    conditions: [
+      { type: CommissionConditionType.SYNTHESIZE_OUTPUT, targetPetalType: PetalType.ETERNAL, targetCount: 1 }
+    ]
+  }
+];
 
 export const DAILY_REWARDS: DailyReward[] = [
   {
@@ -1602,6 +1848,8 @@ export const INITIAL_GAME_STATE: GameState = {
   efficiencyBoost: 0,
   collectionTasks: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASKS)),
   collectionTaskChains: JSON.parse(JSON.stringify(INITIAL_COLLECTION_TASK_CHAINS)),
+  commissionTasks: JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASKS)),
+  commissionTaskChains: JSON.parse(JSON.stringify(INITIAL_COMMISSION_TASK_CHAINS)),
   redDotState: JSON.parse(JSON.stringify(INITIAL_RED_DOT_STATE)),
   regionHeats: REGIONS.map(region => ({
     regionId: region.id,

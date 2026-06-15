@@ -25,6 +25,7 @@ import {
   CollectionTask,
   CollectionTaskStatus,
   CollectionTaskChain,
+  CommissionConditionType,
   DailyReward,
   DailyRewardState,
   EnvironmentState,
@@ -191,7 +192,13 @@ export class SaveManager {
     const migratedGoals = this.migrateGoals(oldState.goals, migratedPetals as Record<PetalType, number>);
     const migratedCollectionTasks = oldState.collectionTasks || JSON.parse(JSON.stringify(initialState.collectionTasks));
     const migratedCollectionTaskChains = oldState.collectionTaskChains || JSON.parse(JSON.stringify(initialState.collectionTaskChains));
-    const migratedRedDotState = oldState.redDotState || JSON.parse(JSON.stringify(initialState.redDotState));
+    const migratedCommissionTasks = oldState.commissionTasks || JSON.parse(JSON.stringify(initialState.commissionTasks));
+    const migratedCommissionTaskChains = oldState.commissionTaskChains || JSON.parse(JSON.stringify(initialState.commissionTaskChains));
+    const oldRedDot = oldState.redDotState || {};
+    const migratedRedDotState = {
+      ...JSON.parse(JSON.stringify(initialState.redDotState)),
+      ...oldRedDot
+    };
     return {
       ...saveData,
       gameState: {
@@ -211,6 +218,8 @@ export class SaveManager {
         lastSaveTime: oldState.lastSaveTime || 0,
         collectionTasks: migratedCollectionTasks,
         collectionTaskChains: migratedCollectionTaskChains,
+        commissionTasks: migratedCommissionTasks,
+        commissionTaskChains: migratedCommissionTaskChains,
         redDotState: migratedRedDotState,
         regionHeats: oldState.regionHeats || initialState.regionHeats,
         consecutiveCollect: oldState.consecutiveCollect || null,
@@ -436,6 +445,7 @@ export class SaveManager {
     this.checkRecipeUnlocks(state);
     this.updateGoalsForPetalCollection(state, type, count);
     this.updateCollectionTasksForPetal(state, type, count);
+    this.updateCommissionTasksForCollect(state, type, count);
     if (!wasUnlocked) {
       this.updateGoalsForPetalUnlock(state, type);
     }
@@ -475,6 +485,7 @@ export class SaveManager {
     state.totalMutations += 1;
 
     let wasUnlocked = state.unlockedPetals.includes(type);
+    const wasDiscovered = state.discoveredMutations.includes(type);
     if (!wasUnlocked) {
       state.unlockedPetals.push(type);
       EventManager.getInstance().emit('collection:unlock', { type, category: 'mutation' });
@@ -487,6 +498,10 @@ export class SaveManager {
     this.checkRecipeUnlocks(state);
     this.updateGoalsForPetalCollection(state, type, count);
     this.updateCollectionTasksForPetal(state, type, count);
+    this.updateCommissionTasksForCollect(state, type, count);
+    if (!wasDiscovered && state.discoveredMutations.includes(type)) {
+      this.updateCommissionTasksForMutationDiscover(state);
+    }
     if (!wasUnlocked) {
       this.updateGoalsForPetalUnlock(state, type);
     }
@@ -511,6 +526,7 @@ export class SaveManager {
     }
 
     this.updateCollectionTasksForPetal(state, type, count);
+    this.updateCommissionTasksForCollect(state, type, count);
 
     this.saveGame(state);
     return state;
@@ -551,6 +567,14 @@ export class SaveManager {
     const state = this.getGameState();
     state.totalSynthesized += 1;
     this.updateGoalsForSynthesis(state, 'any');
+    this.updateCommissionTasksForTotalSynthesize(state);
+    this.saveGame(state);
+    return state;
+  }
+
+  public updateCommissionForSynthesizeOutput(type: PetalType, count: number = 1): GameState {
+    const state = this.getGameState();
+    this.updateCommissionTasksForSynthesizeOutput(state, type, count);
     this.saveGame(state);
     return state;
   }
@@ -988,6 +1012,339 @@ export class SaveManager {
 
     this.saveGame(state);
     return state;
+  }
+
+  // === Commission Tasks ===
+  private updateCommissionTasksForCollect(state: GameState, type: PetalType, count: number): void {
+    this.updateCommissionTasks(state, task => {
+      if (!task.conditions || task.conditions.length === 0) {
+        return task.targetPetalType === type;
+      }
+      return task.conditions.some(cond => 
+        cond.type === CommissionConditionType.COLLECT_PETAL && cond.targetPetalType === type
+      );
+    }, count);
+  }
+
+  private updateCommissionTasksForSynthesizeOutput(state: GameState, type: PetalType, count: number): void {
+    this.updateCommissionTasks(state, task => {
+      if (!task.conditions || task.conditions.length === 0) return false;
+      return task.conditions.some(cond => 
+        cond.type === CommissionConditionType.SYNTHESIZE_OUTPUT && cond.targetPetalType === type
+      );
+    }, count);
+  }
+
+  private updateCommissionTasksForTotalSynthesize(state: GameState): void {
+    state.commissionTasks.forEach((task, index) => {
+      if (task.status === CollectionTaskStatus.LOCKED || 
+          task.status === CollectionTaskStatus.COMPLETED ||
+          task.status === CollectionTaskStatus.CLAIMED) {
+        return;
+      }
+
+      if (!task.conditions || task.conditions.length === 0) return;
+
+      const matched = task.conditions.some(cond => 
+        cond.type === CommissionConditionType.TOTAL_SYNTHESIZED
+      );
+
+      if (!matched) return;
+
+      const targetCond = task.conditions.find(cond => 
+        cond.type === CommissionConditionType.TOTAL_SYNTHESIZED
+      );
+      if (!targetCond) return;
+
+      const newCount = Math.min(state.totalSynthesized, targetCond.targetCount);
+      const wasCompleted = task.currentCount >= targetCond.targetCount;
+      const isNowCompleted = newCount >= targetCond.targetCount;
+
+      state.commissionTasks[index] = {
+        ...task,
+        currentCount: newCount,
+        targetCount: targetCond.targetCount,
+        status: isNowCompleted ? CollectionTaskStatus.COMPLETED : CollectionTaskStatus.IN_PROGRESS
+      };
+
+      EventManager.getInstance().emit('commission:progress', {
+        taskId: task.id,
+        current: newCount,
+        target: targetCond.targetCount
+      });
+
+      if (isNowCompleted && !wasCompleted) {
+        this.completeCommissionTask(state, index);
+      }
+    });
+
+    this.checkCommissionChainCompletion(state);
+  }
+
+  private updateCommissionTasksForMutationDiscover(state: GameState): void {
+    state.commissionTasks.forEach((task, index) => {
+      if (task.status === CollectionTaskStatus.LOCKED || 
+          task.status === CollectionTaskStatus.COMPLETED ||
+          task.status === CollectionTaskStatus.CLAIMED) {
+        return;
+      }
+
+      if (!task.conditions || task.conditions.length === 0) return;
+
+      const matched = task.conditions.some(cond => 
+        cond.type === CommissionConditionType.DISCOVER_MUTATION
+      );
+
+      if (!matched) return;
+
+      const targetCond = task.conditions.find(cond => 
+        cond.type === CommissionConditionType.DISCOVER_MUTATION
+      );
+      if (!targetCond) return;
+
+      const newCount = Math.min(state.discoveredMutations.length, targetCond.targetCount);
+      const wasCompleted = task.currentCount >= targetCond.targetCount;
+      const isNowCompleted = newCount >= targetCond.targetCount;
+
+      state.commissionTasks[index] = {
+        ...task,
+        currentCount: newCount,
+        targetCount: targetCond.targetCount,
+        status: isNowCompleted ? CollectionTaskStatus.COMPLETED : CollectionTaskStatus.IN_PROGRESS
+      };
+
+      EventManager.getInstance().emit('commission:progress', {
+        taskId: task.id,
+        current: newCount,
+        target: targetCond.targetCount
+      });
+
+      if (isNowCompleted && !wasCompleted) {
+        this.completeCommissionTask(state, index);
+      }
+    });
+
+    this.checkCommissionChainCompletion(state);
+  }
+
+  private updateCommissionTasks(
+    state: GameState, 
+    matchFn: (task: CollectionTask) => boolean,
+    count: number
+  ): void {
+    state.commissionTasks.forEach((task, index) => {
+      if (task.status === CollectionTaskStatus.LOCKED || 
+          task.status === CollectionTaskStatus.COMPLETED ||
+          task.status === CollectionTaskStatus.CLAIMED) {
+        return;
+      }
+
+      if (!matchFn(task)) return;
+
+      const newCount = Math.min(task.currentCount + count, task.targetCount);
+      const wasCompleted = task.currentCount >= task.targetCount;
+      const isNowCompleted = newCount >= task.targetCount;
+
+      state.commissionTasks[index] = {
+        ...task,
+        currentCount: newCount,
+        status: isNowCompleted ? CollectionTaskStatus.COMPLETED : CollectionTaskStatus.IN_PROGRESS
+      };
+
+      EventManager.getInstance().emit('commission:progress', {
+        taskId: task.id,
+        current: newCount,
+        target: task.targetCount
+      });
+
+      if (isNowCompleted && !wasCompleted) {
+        this.completeCommissionTask(state, index);
+      }
+    });
+
+    this.checkCommissionChainCompletion(state);
+  }
+
+  private completeCommissionTask(state: GameState, taskIndex: number): void {
+    const task = state.commissionTasks[taskIndex];
+    EventManager.getInstance().emit('commission:completed', { task });
+    this.addClaimableCommissionRedDot(state, task.id);
+    this.showStatusMessage(
+      state,
+      StatusType.SUCCESS,
+      '📜 委托任务完成',
+      `${task.title} - ${task.description}`,
+      4000
+    );
+    this.checkCommissionTaskUnlock(state, task.chainId, task.order);
+  }
+
+  private checkCommissionTaskUnlock(state: GameState, chainId: string, completedOrder: number): void {
+    const chain = state.commissionTaskChains.find(c => c.id === chainId);
+    if (!chain) return;
+
+    const nextTaskId = chain.tasks.find((taskId, idx) => {
+      const task = state.commissionTasks.find(t => t.id === taskId);
+      return task && task.order === completedOrder + 1 && 
+             task.status === CollectionTaskStatus.LOCKED;
+    });
+
+    if (nextTaskId) {
+      const taskIndex = state.commissionTasks.findIndex(t => t.id === nextTaskId);
+      if (taskIndex !== -1) {
+        state.commissionTasks[taskIndex] = {
+          ...state.commissionTasks[taskIndex],
+          status: CollectionTaskStatus.IN_PROGRESS
+        };
+        const task = state.commissionTasks[taskIndex];
+        this.addNewCommissionUnlockRedDot(state, task.id);
+        this.showStatusMessage(
+          state,
+          StatusType.INFO,
+          '🔓 新委托解锁',
+          `${task.title} - ${task.description}`,
+          3500
+        );
+      }
+    }
+  }
+
+  private checkCommissionChainCompletion(state: GameState): void {
+    state.commissionTaskChains.forEach((chain, chainIndex) => {
+      if (chain.isChainComplete) return;
+
+      const allTasksCompleted = chain.tasks.every(taskId => {
+        const task = state.commissionTasks.find(t => t.id === taskId);
+        return task && (task.status === CollectionTaskStatus.COMPLETED || 
+                       task.status === CollectionTaskStatus.CLAIMED);
+      });
+
+      if (allTasksCompleted) {
+        state.commissionTaskChains[chainIndex] = {
+          ...chain,
+          isChainComplete: true
+        };
+        EventManager.getInstance().emit('commissionchain:completed', { 
+          chain: state.commissionTaskChains[chainIndex] 
+        });
+        this.addClaimableCommissionChainRedDot(state, chain.id);
+        this.showStatusMessage(
+          state,
+          StatusType.SUCCESS,
+          '🏆 委托链完成',
+          `${chain.icon} ${chain.title} - 全部委托完成！`,
+          5000
+        );
+      }
+    });
+  }
+
+  public claimCommissionTask(taskId: string): GameState {
+    const state = this.getGameState();
+    const taskIndex = state.commissionTasks.findIndex(t => t.id === taskId);
+    if (taskIndex === -1) return state;
+
+    const task = state.commissionTasks[taskIndex];
+    if (task.status !== CollectionTaskStatus.COMPLETED) return state;
+
+    state.commissionTasks[taskIndex] = { ...task, status: CollectionTaskStatus.CLAIMED };
+    this.applyTaskReward(state, task.reward);
+    this.removeClaimableCommissionRedDot(state, taskId);
+
+    EventManager.getInstance().emit('commission:claimed', { 
+      task: state.commissionTasks[taskIndex] 
+    });
+
+    this.showStatusMessage(
+      state,
+      StatusType.SUCCESS,
+      '🎁 委托奖励已领取',
+      task.reward.description,
+      3000
+    );
+
+    this.saveGame(state);
+    return state;
+  }
+
+  public claimCommissionChain(chainId: string): GameState {
+    const state = this.getGameState();
+    const chainIndex = state.commissionTaskChains.findIndex(c => c.id === chainId);
+    if (chainIndex === -1) return state;
+
+    const chain = state.commissionTaskChains[chainIndex];
+    if (!chain.isChainComplete || chain.chainClaimed) return state;
+
+    state.commissionTaskChains[chainIndex] = { ...chain, chainClaimed: true };
+    if (chain.chainReward) {
+      this.applyTaskReward(state, chain.chainReward);
+    }
+    this.removeClaimableCommissionChainRedDot(state, chainId);
+
+    EventManager.getInstance().emit('commissionchain:claimed', { 
+      chain: state.commissionTaskChains[chainIndex] 
+    });
+
+    this.showStatusMessage(
+      state,
+      StatusType.SUCCESS,
+      '🏆 委托链奖励已领取',
+      chain.chainReward?.description || '恭喜完成全部委托！',
+      4000
+    );
+
+    this.saveGame(state);
+    return state;
+  }
+
+  public getCommissionTasks(): CollectionTask[] {
+    return this.getGameState().commissionTasks;
+  }
+
+  public getCommissionTaskChains(): CollectionTaskChain[] {
+    return this.getGameState().commissionTaskChains;
+  }
+
+  public viewCommissionPanel(): void {
+    const state = this.getGameState();
+    state.redDotState.lastViewedCommission = Date.now();
+    state.redDotState.commissionNewUnlocks = [];
+    this.saveGame(state);
+    EventManager.getInstance().emit('reddot:updated', {});
+  }
+
+  // === Red Dot for Commission ===
+  private addClaimableCommissionRedDot(state: GameState, taskId: string): void {
+    if (!state.redDotState.claimableCommissions.includes(taskId)) {
+      state.redDotState.claimableCommissions.push(taskId);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private removeClaimableCommissionRedDot(state: GameState, taskId: string): void {
+    state.redDotState.claimableCommissions = 
+      state.redDotState.claimableCommissions.filter(id => id !== taskId);
+    EventManager.getInstance().emit('reddot:updated', {});
+  }
+
+  private addClaimableCommissionChainRedDot(state: GameState, chainId: string): void {
+    if (!state.redDotState.claimableCommissionChains.includes(chainId)) {
+      state.redDotState.claimableCommissionChains.push(chainId);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
+  }
+
+  private removeClaimableCommissionChainRedDot(state: GameState, chainId: string): void {
+    state.redDotState.claimableCommissionChains = 
+      state.redDotState.claimableCommissionChains.filter(id => id !== chainId);
+    EventManager.getInstance().emit('reddot:updated', {});
+  }
+
+  private addNewCommissionUnlockRedDot(state: GameState, taskId: string): void {
+    if (!state.redDotState.commissionNewUnlocks.includes(taskId)) {
+      state.redDotState.commissionNewUnlocks.push(taskId);
+      EventManager.getInstance().emit('reddot:updated', {});
+    }
   }
 
   private applyTaskReward(state: GameState, reward: any): void {

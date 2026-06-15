@@ -30,10 +30,18 @@ export class EventManager {
 
   public off<K extends keyof GameEvents>(
     event: K,
-    callback: (data: GameEvents[K]) => void,
+    callback?: (data: GameEvents[K]) => void,
     context?: unknown
   ): void {
-    this.eventEmitter.off(event, callback, context);
+    if (callback) {
+      this.eventEmitter.off(event, callback, context);
+    } else {
+      this.eventEmitter.removeListener(event);
+    }
+  }
+
+  public removeEventListener<K extends keyof GameEvents>(event: K): void {
+    this.eventEmitter.removeListener(event);
   }
 
   public once<K extends keyof GameEvents>(

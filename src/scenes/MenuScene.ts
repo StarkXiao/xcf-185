@@ -2,7 +2,15 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SAVE_VERSION } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { SaveBackupInfo, SaveValidationResult, AudioContextType } from '../types';
+import { EventManager } from '../managers/EventManager';
+import { 
+  SaveBackupInfo, 
+  SaveValidationResult, 
+  AudioContextType, 
+  CollectionTask, 
+  CollectionTaskChain, 
+  CollectionTaskStatus 
+} from '../types';
 
 export class MenuScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -13,6 +21,10 @@ export class MenuScene extends Phaser.Scene {
   private dailyRewardPanel: Phaser.GameObjects.Container | null = null;
   private goalsPanel: Phaser.GameObjects.Container | null = null;
   private progressPanel: Phaser.GameObjects.Container | null = null;
+  private commissionPanel: Phaser.GameObjects.Container | null = null;
+  private commissionListContainer: Phaser.GameObjects.Container | null = null;
+  private commissionBtn: Phaser.GameObjects.Text | null = null;
+  private commissionRedDot: Phaser.GameObjects.Graphics | null = null;
 
   constructor() {
     super('Menu');
@@ -162,6 +174,12 @@ export class MenuScene extends Phaser.Scene {
       this.createButton('🎯 阶段目标', currentY, () => {
         this.openGoalsPanel();
       }, 0x4a8acf);
+      currentY += btnSpacing;
+
+      this.commissionBtn = this.createButton('📜 森林委托', currentY, () => {
+        this.openCommissionPanel();
+      }, 0xc48a4a);
+      this.setupCommissionRedDot();
       currentY += btnSpacing;
 
       this.createButton('📊 最近进度', currentY, () => {
@@ -1555,5 +1573,400 @@ export class MenuScene extends Phaser.Scene {
       this.progressPanel.destroy();
       this.progressPanel = null;
     }
+    if (this.commissionPanel) {
+      this.commissionPanel.destroy();
+      this.commissionPanel = null;
+    }
+    EventManager.getInstance().off('commission:progress');
+    EventManager.getInstance().off('commission:completed');
+    EventManager.getInstance().off('commission:claimed');
+    EventManager.getInstance().off('commissionchain:completed');
+    EventManager.getInstance().off('commissionchain:claimed');
+    EventManager.getInstance().off('reddot:updated');
+  }
+
+  private setupCommissionRedDot(): void {
+    if (!this.commissionBtn) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const hasUnclaimed = state.redDotState.claimableCommissions.length > 0 || 
+                        state.redDotState.claimableCommissionChains.length > 0 ||
+                        state.redDotState.commissionNewUnlocks.length > 0;
+
+    if (this.commissionRedDot) {
+      this.commissionRedDot.destroy();
+      this.commissionRedDot = null;
+    }
+
+    if (hasUnclaimed) {
+      const bounds = this.commissionBtn.getBounds();
+      this.commissionRedDot = this.add.graphics();
+      this.commissionRedDot.fillStyle(0xff4444, 1);
+      this.commissionRedDot.fillCircle(bounds.right, bounds.top, 8);
+      this.commissionRedDot.lineStyle(2, 0xffffff, 1);
+      this.commissionRedDot.strokeCircle(bounds.right, bounds.top, 8);
+      this.commissionRedDot.setDepth(this.commissionBtn.depth + 1);
+    }
+
+    EventManager.getInstance().off('reddot:updated');
+    EventManager.getInstance().on('reddot:updated', () => {
+      this.setupCommissionRedDot();
+    });
+  }
+
+  private openCommissionPanel(): void {
+    if (this.commissionPanel) return;
+
+    SaveManager.getInstance().viewCommissionPanel();
+
+    this.commissionPanel = this.add.container(0, 0);
+    this.commissionPanel.setDepth(100);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0515, 0.95);
+    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    bg.setInteractive();
+    this.commissionPanel.add(bg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '📜 森林委托', {
+      fontFamily: 'Arial',
+      fontSize: '32px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.commissionPanel.add(title);
+
+    const desc = this.add.text(GAME_WIDTH / 2, 95, '完成森林精灵的委托，获得丰厚奖励', {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#888888'
+    }).setOrigin(0.5);
+    this.commissionPanel.add(desc);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeCommissionPanel());
+    this.commissionPanel.add(closeBtn);
+
+    this.commissionListContainer = this.add.container(0, 120);
+    this.commissionPanel.add(this.commissionListContainer);
+
+    this.renderCommissionChains();
+
+    this.setupCommissionEventListeners();
+
+    this.commissionPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.commissionPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private setupCommissionEventListeners(): void {
+    EventManager.getInstance().on('commission:progress', () => {
+      if (this.commissionPanel) this.renderCommissionChains();
+    });
+    EventManager.getInstance().on('commission:completed', () => {
+      if (this.commissionPanel) this.renderCommissionChains();
+    });
+    EventManager.getInstance().on('commission:claimed', () => {
+      if (this.commissionPanel) this.renderCommissionChains();
+    });
+    EventManager.getInstance().on('commissionchain:completed', () => {
+      if (this.commissionPanel) this.renderCommissionChains();
+    });
+    EventManager.getInstance().on('commissionchain:claimed', () => {
+      if (this.commissionPanel) this.renderCommissionChains();
+    });
+  }
+
+  private closeCommissionPanel(): void {
+    if (!this.commissionPanel) return;
+
+    this.tweens.add({
+      targets: this.commissionPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.commissionPanel) {
+          this.commissionPanel.destroy();
+          this.commissionPanel = null;
+          this.commissionListContainer = null;
+        }
+      }
+    });
+  }
+
+  private renderCommissionChains(): void {
+    if (!this.commissionListContainer) return;
+
+    this.commissionListContainer.removeAll(true);
+
+    const chains = SaveManager.getInstance().getCommissionTaskChains();
+    const tasks = SaveManager.getInstance().getCommissionTasks();
+    const state = SaveManager.getInstance().getGameState();
+
+    let currentY = 0;
+
+    chains.forEach(chain => {
+      const chainTasks = chain.tasks
+        .map(taskId => tasks.find(t => t.id === taskId))
+        .filter((t): t is CollectionTask => t !== undefined)
+        .sort((a, b) => a.order - b.order);
+
+      const completedTasks = chainTasks.filter(
+        t => t.status === CollectionTaskStatus.COMPLETED || t.status === CollectionTaskStatus.CLAIMED
+      ).length;
+      const chainProgress = chainTasks.length > 0 ? completedTasks / chainTasks.length : 0;
+
+      const chainCardHeight = 100;
+      const chainCardX = 30;
+      const chainCardWidth = GAME_WIDTH - 60;
+
+      const chainBg = this.add.graphics();
+      chainBg.fillStyle(0x1a0a2e, 0.85);
+      chainBg.fillRoundedRect(chainCardX, currentY, chainCardWidth, chainCardHeight, 16);
+      chainBg.lineStyle(2, chain.color, 0.4);
+      chainBg.strokeRoundedRect(chainCardX, currentY, chainCardWidth, chainCardHeight, 16);
+      this.commissionListContainer!.add(chainBg);
+
+      const chainIcon = this.add.text(chainCardX + 25, currentY + 25, chain.icon, {
+        fontFamily: 'Arial',
+        fontSize: '28px'
+      }).setOrigin(0, 0.5);
+      this.commissionListContainer!.add(chainIcon);
+
+      const chainTitle = this.add.text(chainCardX + 65, currentY + 22, chain.title, {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      this.commissionListContainer!.add(chainTitle);
+
+      const chainDesc = this.add.text(chainCardX + 65, currentY + 45, chain.description, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+      this.commissionListContainer!.add(chainDesc);
+
+      const progressBg = this.add.graphics();
+      progressBg.fillStyle(0x000000, 0.5);
+      progressBg.fillRoundedRect(chainCardX + 65, currentY + 62, chainCardWidth - 130, 12, 6);
+      this.commissionListContainer!.add(progressBg);
+
+      const progressFill = this.add.graphics();
+      progressFill.fillStyle(chain.color, 1);
+      progressFill.fillRoundedRect(chainCardX + 65, currentY + 62, (chainCardWidth - 130) * chainProgress, 12, 6);
+      this.commissionListContainer!.add(progressFill);
+
+      const progressText = this.add.text(
+        chainCardX + chainCardWidth - 70, 
+        currentY + 68, 
+        `${completedTasks}/${chainTasks.length}`, {
+          fontFamily: 'Arial',
+          fontSize: '11px',
+          color: '#ffffff',
+          fontStyle: 'bold'
+        }
+      ).setOrigin(0.5);
+      this.commissionListContainer!.add(progressText);
+
+      if (chain.chainReward) {
+        const claimable = chain.isChainComplete && !chain.chainClaimed;
+        const chainRewardBtnBg = this.add.graphics();
+        chainRewardBtnBg.fillStyle(chain.chainClaimed ? 0x444444 : claimable ? 0x4aa85c : 0x222222, claimable ? 1 : 0.7);
+        chainRewardBtnBg.fillRoundedRect(chainCardX + chainCardWidth - 70, currentY + 15, 55, 32, 8);
+        if (claimable) {
+          chainRewardBtnBg.lineStyle(2, 0xffffff, 0.6);
+          chainRewardBtnBg.strokeRoundedRect(chainCardX + chainCardWidth - 70, currentY + 15, 55, 32, 8);
+        }
+        this.commissionListContainer!.add(chainRewardBtnBg);
+
+        const chainRewardBtnText = this.add.text(
+          chainCardX + chainCardWidth - 42, 
+          currentY + 31, 
+          chain.chainClaimed ? '✓' : claimable ? '领取' : '🎁', {
+            fontFamily: 'Arial',
+            fontSize: claimable ? '13px' : '14px',
+            color: '#ffffff',
+            fontStyle: 'bold'
+          }
+        ).setOrigin(0.5).setInteractive({ useHandCursor: claimable });
+        if (claimable) {
+          chainRewardBtnText.on('pointerup', () => {
+            SaveManager.getInstance().claimCommissionChain(chain.id);
+            this.showToast('🎁 委托链奖励已领取！');
+          });
+        }
+        this.commissionListContainer!.add(chainRewardBtnText);
+
+        if (claimable && state.redDotState.claimableCommissionChains.includes(chain.id)) {
+          const redDot = this.add.graphics();
+          redDot.fillStyle(0xff4444, 1);
+          redDot.fillCircle(chainCardX + chainCardWidth - 20, currentY + 18, 5);
+          this.commissionListContainer!.add(redDot);
+        }
+      }
+
+      currentY += chainCardHeight + 15;
+
+      chainTasks.forEach((task, taskIdx) => {
+        const isLocked = task.status === CollectionTaskStatus.LOCKED;
+        const isCompleted = task.status === CollectionTaskStatus.COMPLETED;
+        const isClaimed = task.status === CollectionTaskStatus.CLAIMED;
+        const isInProgress = task.status === CollectionTaskStatus.IN_PROGRESS;
+
+        const taskCardHeight = 95;
+        const taskCardX = 55;
+        const taskCardWidth = GAME_WIDTH - 110;
+
+        const taskBg = this.add.graphics();
+        const taskBgColor = isLocked ? 0x15101f : isClaimed ? 0x0f1a0f : isCompleted ? 0x1a1f0f : 0x1a0a2e;
+        taskBg.fillStyle(taskBgColor, 0.8);
+        taskBg.fillRoundedRect(taskCardX, currentY, taskCardWidth, taskCardHeight, 12);
+        const borderColor = isLocked ? 0x333333 : isClaimed ? 0x4aa85c : isCompleted ? 0xffaa00 : chain.color;
+        taskBg.lineStyle(1.5, borderColor, isLocked ? 0.3 : 0.5);
+        taskBg.strokeRoundedRect(taskCardX, currentY, taskCardWidth, taskCardHeight, 12);
+        this.commissionListContainer!.add(taskBg);
+
+        const orderText = this.add.text(taskCardX + 18, currentY + 22, `${task.order}`, {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: isLocked ? '#444444' : '#ffffff',
+          backgroundColor: `rgba(${this.hexToRgb(chain.color)}, ${isLocked ? 0.15 : 0.4})`,
+          padding: { x: 6, y: 2 }
+        }).setOrigin(0.5);
+        this.commissionListContainer!.add(orderText);
+
+        const taskTitle = this.add.text(taskCardX + 45, currentY + 18, task.title, {
+          fontFamily: 'Arial',
+          fontSize: '15px',
+          color: isLocked ? '#555555' : '#ffffff',
+          fontStyle: 'bold'
+        }).setOrigin(0, 0.5);
+        this.commissionListContainer!.add(taskTitle);
+
+        const taskDesc = this.add.text(taskCardX + 45, currentY + 40, task.description, {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: isLocked ? '#444444' : '#aaaaaa'
+        }).setOrigin(0, 0.5);
+        this.commissionListContainer!.add(taskDesc);
+
+        if (!isLocked) {
+          const taskProgressBarBg = this.add.graphics();
+          taskProgressBarBg.fillStyle(0x000000, 0.5);
+          taskProgressBarBg.fillRoundedRect(taskCardX + 45, currentY + 58, taskCardWidth - 160, 10, 5);
+          this.commissionListContainer!.add(taskProgressBarBg);
+
+          const progressPct = task.targetCount > 0 ? task.currentCount / task.targetCount : 0;
+          const taskProgressBarFill = this.add.graphics();
+          taskProgressBarFill.fillStyle(isClaimed ? 0x4aa85c : isCompleted ? 0xffaa00 : chain.color, 1);
+          taskProgressBarFill.fillRoundedRect(taskCardX + 45, currentY + 58, (taskCardWidth - 160) * Math.min(progressPct, 1), 10, 5);
+          this.commissionListContainer!.add(taskProgressBarFill);
+
+          const taskProgressText = this.add.text(
+            taskCardX + taskCardWidth - 125, 
+            currentY + 63, 
+            `${task.currentCount}/${task.targetCount}`, {
+              fontFamily: 'Arial',
+              fontSize: '11px',
+              color: isLocked ? '#555555' : '#ffffff',
+              fontStyle: 'bold'
+            }
+          ).setOrigin(0, 0.5);
+          this.commissionListContainer!.add(taskProgressText);
+
+          const rewardText = this.add.text(taskCardX + 45, currentY + 78, 
+            `🎁 ${task.reward.description}`, {
+              fontFamily: 'Arial',
+              fontSize: '11px',
+              color: '#ffaacc'
+            }
+          ).setOrigin(0, 0.5);
+          this.commissionListContainer!.add(rewardText);
+        } else {
+          const hintText = this.add.text(taskCardX + 45, currentY + 65, 
+            `🔒 ${task.unlockHint}`, {
+              fontFamily: 'Arial',
+              fontSize: '12px',
+              color: '#666666'
+            }
+          ).setOrigin(0, 0.5);
+          this.commissionListContainer!.add(hintText);
+        }
+
+        const btnX = taskCardX + taskCardWidth - 60;
+        const btnY = currentY + taskCardHeight / 2;
+        
+        if (isCompleted) {
+          const claimBtnBg = this.add.graphics();
+          claimBtnBg.fillStyle(0x4aa85c, 1);
+          claimBtnBg.fillRoundedRect(btnX - 35, btnY - 16, 70, 32, 8);
+          claimBtnBg.lineStyle(2, 0xffffff, 0.5);
+          claimBtnBg.strokeRoundedRect(btnX - 35, btnY - 16, 70, 32, 8);
+          this.commissionListContainer!.add(claimBtnBg);
+
+          const claimBtn = this.add.text(btnX, btnY, '领取', {
+            fontFamily: 'Arial',
+            fontSize: '14px',
+            color: '#ffffff',
+            fontStyle: 'bold'
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+          claimBtn.on('pointerup', () => {
+            SaveManager.getInstance().claimCommissionTask(task.id);
+            this.showToast(`🎁 获得: ${task.reward.description}`);
+          });
+          this.commissionListContainer!.add(claimBtn);
+
+          if (state.redDotState.claimableCommissions.includes(task.id)) {
+            const redDot = this.add.graphics();
+            redDot.fillStyle(0xff4444, 1);
+            redDot.fillCircle(btnX + 32, btnY - 14, 5);
+            this.commissionListContainer!.add(redDot);
+          }
+        } else if (isClaimed) {
+          const claimedText = this.add.text(btnX, btnY, '✓ 已领', {
+            fontFamily: 'Arial',
+            fontSize: '14px',
+            color: '#4aa85c',
+            fontStyle: 'bold'
+          }).setOrigin(0.5);
+          this.commissionListContainer!.add(claimedText);
+        } else if (isInProgress) {
+          const progressBtnBg = this.add.graphics();
+          progressBtnBg.fillStyle(0x333333, 0.8);
+          progressBtnBg.fillRoundedRect(btnX - 35, btnY - 16, 70, 32, 8);
+          this.commissionListContainer!.add(progressBtnBg);
+
+          const progressBtnText = this.add.text(btnX, btnY, '进行中', {
+            fontFamily: 'Arial',
+            fontSize: '12px',
+            color: '#88ccff'
+          }).setOrigin(0.5);
+          this.commissionListContainer!.add(progressBtnText);
+        } else {
+          const lockedText = this.add.text(btnX, btnY, '🔒', {
+            fontFamily: 'Arial',
+            fontSize: '18px',
+            color: '#555555'
+          }).setOrigin(0.5);
+          this.commissionListContainer!.add(lockedText);
+        }
+
+        currentY += taskCardHeight + 8;
+      });
+
+      currentY += 20;
+    });
+
+    const scrollHeight = Math.max(currentY + 20, GAME_HEIGHT - 140);
+    this.commissionListContainer.setSize(GAME_WIDTH, scrollHeight);
   }
 }
