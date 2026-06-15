@@ -36,11 +36,14 @@ export class PetalWorkshopSystem {
     this.eventListeners.push({ event: 'petal:collected', callback: onPetalCollected });
 
     this.checkAllRecipeUnlocks();
+    this.validateWorkshopState();
+    this.restoreActiveJobs();
   }
 
   private checkAllRecipeUnlocks(): void {
     const state = SaveManager.getInstance().getGameState();
     const workshop = state.workshopState;
+    let hasUnlock = false;
 
     this.recipes.forEach(recipe => {
       const recipeState = workshop.recipeStates.find(rs => rs.recipeId === recipe.id);
@@ -50,15 +53,21 @@ export class PetalWorkshopSystem {
         );
         if (unlocked) {
           recipeState.isUnlocked = true;
+          hasUnlock = true;
           EventManager.getInstance().emit('workshop:recipe_unlocked', { recipeId: recipe.id });
         }
       }
     });
+
+    if (hasUnlock) {
+      SaveManager.getInstance().saveGame(state);
+    }
   }
 
   private checkRecipeUnlocks(petalType: PetalType): void {
     const state = SaveManager.getInstance().getGameState();
     const workshop = state.workshopState;
+    let hasUnlock = false;
 
     this.recipes.forEach(recipe => {
       const needsThisPetal = recipe.unlockCondition.some(c => c.type === petalType);
@@ -71,10 +80,200 @@ export class PetalWorkshopSystem {
         );
         if (unlocked) {
           recipeState.isUnlocked = true;
+          hasUnlock = true;
           EventManager.getInstance().emit('workshop:recipe_unlocked', { recipeId: recipe.id });
         }
       }
     });
+
+    if (hasUnlock) {
+      SaveManager.getInstance().saveGame(state);
+    }
+  }
+
+  private validateWorkshopState(): void {
+    const state = SaveManager.getInstance().getGameState();
+    const workshop = state.workshopState;
+    let hasFix = false;
+
+    if (!workshop.recipeStates || !Array.isArray(workshop.recipeStates)) {
+      workshop.recipeStates = WORKSHOP_RECIPES.map(recipe => ({
+        recipeId: recipe.id,
+        isUnlocked: recipe.unlockCondition.length === 0,
+        currentLevel: 1,
+        totalProduced: 0,
+        totalBatchRuns: 0,
+        lastProducedAt: 0
+      }));
+      hasFix = true;
+    } else {
+      const existingIds = new Set(workshop.recipeStates.map(rs => rs.recipeId));
+      WORKSHOP_RECIPES.forEach(recipe => {
+        if (!existingIds.has(recipe.id)) {
+          workshop.recipeStates.push({
+            recipeId: recipe.id,
+            isUnlocked: false,
+            currentLevel: 1,
+            totalProduced: 0,
+            totalBatchRuns: 0,
+            lastProducedAt: 0
+          });
+          hasFix = true;
+        }
+      });
+
+      workshop.recipeStates = workshop.recipeStates.filter(rs => {
+        const recipe = this.recipes.find(r => r.id === rs.recipeId);
+        if (!recipe) return false;
+        if (typeof rs.currentLevel !== 'number' || rs.currentLevel < 1 || rs.currentLevel > 5) {
+          rs.currentLevel = 1;
+          hasFix = true;
+        }
+        if (typeof rs.totalProduced !== 'number' || rs.totalProduced < 0) {
+          rs.totalProduced = 0;
+          hasFix = true;
+        }
+        if (typeof rs.totalBatchRuns !== 'number' || rs.totalBatchRuns < 0) {
+          rs.totalBatchRuns = 0;
+          hasFix = true;
+        }
+        return true;
+      });
+    }
+
+    if (!workshop.activeJobs || !Array.isArray(workshop.activeJobs)) {
+      workshop.activeJobs = [];
+      hasFix = true;
+    } else {
+      const validJobs = workshop.activeJobs.filter(job => {
+        const recipe = this.recipes.find(r => r.id === job.recipeId);
+        if (!recipe) return false;
+        if (typeof job.batchCount !== 'number' || job.batchCount < 1 || job.batchCount > recipe.batchMax) return false;
+        if (typeof job.startTime !== 'number' || job.startTime <= 0) return false;
+        if (typeof job.duration !== 'number' || job.duration <= 0) return false;
+        return true;
+      });
+      if (validJobs.length !== workshop.activeJobs.length) {
+        workshop.activeJobs = validJobs;
+        hasFix = true;
+      }
+      if (workshop.activeJobs.length > WORKSHOP_MAX_ACTIVE_JOBS) {
+        workshop.activeJobs = workshop.activeJobs.slice(0, WORKSHOP_MAX_ACTIVE_JOBS);
+        hasFix = true;
+      }
+    }
+
+    if (!workshop.productionStats || typeof workshop.productionStats !== 'object') {
+      workshop.productionStats = {
+        totalProcessed: 0,
+        totalOutput: 0,
+        totalBatchOperations: 0,
+        totalUpgrades: 0,
+        averageOutputPerRun: 0,
+        recipesByProcessingType: {
+          [ProcessingType.REFINING]: 0,
+          [ProcessingType.PURIFYING]: 0,
+          [ProcessingType.ENHANCING]: 0
+        },
+        peakBatchSize: 0,
+        totalProcessingTime: 0
+      };
+      hasFix = true;
+    } else {
+      const stats = workshop.productionStats;
+      if (typeof stats.totalProcessed !== 'number' || stats.totalProcessed < 0) { stats.totalProcessed = 0; hasFix = true; }
+      if (typeof stats.totalOutput !== 'number' || stats.totalOutput < 0) { stats.totalOutput = 0; hasFix = true; }
+      if (typeof stats.totalBatchOperations !== 'number' || stats.totalBatchOperations < 0) { stats.totalBatchOperations = 0; hasFix = true; }
+      if (typeof stats.totalUpgrades !== 'number' || stats.totalUpgrades < 0) { stats.totalUpgrades = 0; hasFix = true; }
+      if (typeof stats.peakBatchSize !== 'number' || stats.peakBatchSize < 0) { stats.peakBatchSize = 0; hasFix = true; }
+      if (typeof stats.totalProcessingTime !== 'number' || stats.totalProcessingTime < 0) { stats.totalProcessingTime = 0; hasFix = true; }
+      if (!stats.recipesByProcessingType || typeof stats.recipesByProcessingType !== 'object') {
+        stats.recipesByProcessingType = {
+          [ProcessingType.REFINING]: 0,
+          [ProcessingType.PURIFYING]: 0,
+          [ProcessingType.ENHANCING]: 0
+        };
+        hasFix = true;
+      } else {
+        [ProcessingType.REFINING, ProcessingType.PURIFYING, ProcessingType.ENHANCING].forEach(type => {
+          if (typeof stats.recipesByProcessingType[type] !== 'number' || stats.recipesByProcessingType[type] < 0) {
+            stats.recipesByProcessingType[type] = 0;
+            hasFix = true;
+          }
+        });
+      }
+      if (stats.totalBatchOperations > 0) {
+        const expectedAvg = stats.totalOutput / stats.totalBatchOperations;
+        if (Math.abs(stats.averageOutputPerRun - expectedAvg) > 0.1) {
+          stats.averageOutputPerRun = expectedAvg;
+          hasFix = true;
+        }
+      } else if (stats.averageOutputPerRun !== 0) {
+        stats.averageOutputPerRun = 0;
+        hasFix = true;
+      }
+    }
+
+    if (!workshop.productionRecords || !Array.isArray(workshop.productionRecords)) {
+      workshop.productionRecords = [];
+      hasFix = true;
+    } else if (workshop.productionRecords.length > WORKSHOP_MAX_RECORDS) {
+      workshop.productionRecords = workshop.productionRecords.slice(0, WORKSHOP_MAX_RECORDS);
+      hasFix = true;
+    }
+
+    if (hasFix) {
+      SaveManager.getInstance().saveGame(state);
+    }
+  }
+
+  private restoreActiveJobs(): void {
+    const state = SaveManager.getInstance().getGameState();
+    const workshop = state.workshopState;
+    const now = Date.now();
+
+    const completedJobs: WorkshopActiveJob[] = [];
+    const ongoingJobs: WorkshopActiveJob[] = [];
+
+    workshop.activeJobs.forEach(job => {
+      const elapsed = now - job.startTime;
+      if (elapsed >= job.duration) {
+        completedJobs.push(job);
+      } else {
+        ongoingJobs.push(job);
+      }
+    });
+
+    workshop.activeJobs = ongoingJobs;
+
+    completedJobs.forEach(job => {
+      const recipe = this.recipes.find(r => r.id === job.recipeId);
+      if (!recipe) return;
+
+      const remainingDuration = 0;
+      this.scene.time.delayedCall(remainingDuration + 200, () => {
+        this.completeProcessing(job.id);
+      });
+    });
+
+    ongoingJobs.forEach(job => {
+      const recipe = this.recipes.find(r => r.id === job.recipeId);
+      if (!recipe) return;
+
+      const elapsed = now - job.startTime;
+      const remaining = job.duration - elapsed;
+
+      const progress = elapsed / job.duration;
+      this.playProcessingAnimationResume(recipe, job, progress);
+
+      this.scene.time.delayedCall(remaining, () => {
+        this.completeProcessing(job.id);
+      });
+    });
+
+    if (completedJobs.length > 0 || ongoingJobs.length > 0) {
+      SaveManager.getInstance().saveGame(state);
+    }
   }
 
   public canProcess(recipeId: string, batchCount: number = 1): boolean {
@@ -123,6 +322,8 @@ export class PetalWorkshopSystem {
     };
 
     workshop.activeJobs.push(job);
+
+    SaveManager.getInstance().saveGame(state);
 
     EventManager.getInstance().emit('workshop:processing_start', { recipeId, batchCount });
     EventManager.getInstance().emit('audio:play', { key: 'sfx_synthesis', volume: 0.4 });
@@ -423,6 +624,86 @@ export class PetalWorkshopSystem {
       targets: proxy,
       progress: 1,
       duration: recipe.processingTime * batchCount,
+      ease: 'Linear',
+      onUpdate: () => {
+        progressBar.clear();
+        progressBar.fillStyle(color, 0.9);
+        progressBar.fillRoundedRect(barX, barY, barWidth * proxy.progress, barHeight, 4);
+      },
+      onComplete: () => {
+        progressBg.destroy();
+        progressBar.destroy();
+      }
+    });
+  }
+
+  private playProcessingAnimationResume(recipe: WorkshopRecipe, job: WorkshopActiveJob, startProgress: number): void {
+    const camera = this.scene.cameras.main;
+    const centerX = camera.scrollX + camera.width / 2;
+    const centerY = camera.scrollY + camera.height / 2;
+
+    const colorMap: Record<ProcessingType, number> = {
+      [ProcessingType.REFINING]: 0xff9900,
+      [ProcessingType.PURIFYING]: 0x66ddff,
+      [ProcessingType.ENHANCING]: 0xff66cc
+    };
+    const color = colorMap[recipe.processingType];
+
+    const remainingDuration = job.duration * (1 - startProgress);
+    if (remainingDuration <= 0) return;
+
+    const circle = this.scene.add.graphics().setDepth(70);
+    for (let i = 0; i < 3; i++) {
+      circle.lineStyle(3 - i, color, 0.6 - i * 0.15);
+      circle.beginPath();
+      circle.arc(centerX, centerY, 60 + i * 20, 0, Math.PI * 2);
+      circle.strokePath();
+    }
+    circle.rotation = Math.PI * 4 * job.batchCount * startProgress;
+
+    this.scene.tweens.add({
+      targets: circle,
+      rotation: Math.PI * 4 * job.batchCount,
+      alpha: { from: 0.8, to: 0.3 },
+      duration: remainingDuration,
+      ease: 'Linear',
+      onComplete: () => circle.destroy()
+    });
+
+    const batchSize = this.scene.add.text(centerX, centerY - 40, `×${job.batchCount}`, {
+      fontFamily: 'Arial',
+      fontSize: '20px',
+      color: `#${color.toString(16).padStart(6, '0')}`,
+      align: 'center',
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5).setDepth(71).setScrollFactor(0).setAlpha(0.8);
+
+    this.scene.tweens.add({
+      targets: batchSize,
+      alpha: 0,
+      y: centerY - 60,
+      duration: Math.min(600, remainingDuration),
+      delay: Math.max(0, remainingDuration - 600),
+      ease: 'Cubic.In',
+      onComplete: () => batchSize.destroy()
+    });
+
+    const progressBg = this.scene.add.graphics().setDepth(72).setScrollFactor(0);
+    const progressBar = this.scene.add.graphics().setDepth(73).setScrollFactor(0);
+    const barWidth = 120;
+    const barHeight = 8;
+    const barX = centerX - barWidth / 2;
+    const barY = centerY + 50;
+
+    progressBg.fillStyle(0x000000, 0.6);
+    progressBg.fillRoundedRect(barX, barY, barWidth, barHeight, 4);
+
+    const proxy = { progress: startProgress };
+    this.scene.tweens.add({
+      targets: proxy,
+      progress: 1,
+      duration: remainingDuration,
       ease: 'Linear',
       onUpdate: () => {
         progressBar.clear();
