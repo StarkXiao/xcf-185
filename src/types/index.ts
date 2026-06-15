@@ -201,6 +201,7 @@ export interface GameState {
   currentRegionId: string | null;
   lastRegionId: string | null;
   workshopState: WorkshopState;
+  storyProgress: StoryProgressState;
 }
 
 export interface AudioContextPreferences {
@@ -912,6 +913,129 @@ export interface WorkshopState {
   productionRecords: WorkshopProductionRecord[];
 }
 
+export enum ChapterStatus {
+  LOCKED = 'locked',
+  IN_PROGRESS = 'in_progress',
+  COMPLETED = 'completed',
+  SETTLED = 'settled'
+}
+
+export enum ChapterGoalType {
+  COLLECT_PETAL = 'collect_petal',
+  SYNTHESIZE_RECIPE = 'synthesize_recipe',
+  UNLOCK_REGION = 'unlock_region',
+  UNLOCK_PETAL = 'unlock_petal',
+  TOTAL_COLLECTED = 'total_collected',
+  TOTAL_SYNTHESIZED = 'total_synthesized',
+  DISCOVER_MUTATION = 'discover_mutation',
+  VISITOR_INTERACT = 'visitor_interact'
+}
+
+export interface ChapterGoal {
+  id: string;
+  type: ChapterGoalType;
+  title: string;
+  description: string;
+  target: PetalType | string;
+  targetCount: number;
+  currentCount: number;
+  completed: boolean;
+  claimed: boolean;
+}
+
+export interface ChapterDialogue {
+  id: string;
+  speaker: string;
+  speakerIcon?: string;
+  text: string;
+  expression?: 'happy' | 'sad' | 'surprised' | 'serious' | 'normal';
+  delay?: number;
+}
+
+export interface ChapterReward {
+  type: 'petal' | 'recipe' | 'unlock_region' | 'efficiency_boost';
+  petalType?: PetalType;
+  count?: number;
+  recipeId?: string;
+  regionId?: string;
+  boostAmount?: number;
+  description: string;
+}
+
+export interface ChapterSpecialRecipe {
+  recipeId: string;
+  unlockHint: string;
+  isUnlocked: boolean;
+}
+
+export interface ChapterConfig {
+  id: string;
+  order: number;
+  title: string;
+  subtitle: string;
+  description: string;
+  icon: string;
+  color: number;
+  regionId: string;
+  startDialogue: ChapterDialogue[];
+  completeDialogue: ChapterDialogue[];
+  goals: ChapterGoal[];
+  rewards: ChapterReward[];
+  specialRecipes: ChapterSpecialRecipe[];
+  unlockCondition?: {
+    type: 'chapter_completed' | 'play_time' | 'total_collected';
+    targetChapterId?: string;
+    targetCount?: number;
+  };
+}
+
+export interface ChapterState {
+  chapterId: string;
+  status: ChapterStatus;
+  currentGoalIndex: number;
+  goals: ChapterGoal[];
+  specialRecipes: ChapterSpecialRecipe[];
+  startedAt?: number;
+  completedAt?: number;
+  settledAt?: number;
+  playTimeInChapter: number;
+  petalsCollectedInChapter: Record<PetalType, number>;
+  synthesesInChapter: number;
+  dialoguesViewed: string[];
+}
+
+export interface ChapterSettlementData {
+  chapterId: string;
+  chapterTitle: string;
+  playTime: number;
+  goalsCompleted: number;
+  totalGoals: number;
+  petalsCollected: Record<PetalType, number>;
+  synthesesCompleted: number;
+  rewards: ChapterReward[];
+  rating: 'S' | 'A' | 'B' | 'C';
+  score: number;
+}
+
+export interface StoryProgressState {
+  currentChapterId: string | null;
+  chapterStates: ChapterState[];
+  allChaptersCompleted: boolean;
+  totalStoryScore: number;
+  bestChapterRatings: Record<string, 'S' | 'A' | 'B' | 'C'>;
+}
+
+export interface ChapterReviewData {
+  chapterId: string;
+  chapterTitle: string;
+  status: ChapterStatus;
+  rating: 'S' | 'A' | 'B' | 'C' | null;
+  playTime: number;
+  goalsCompleted: number;
+  totalGoals: number;
+  completedAt?: number;
+}
+
 export interface GameEvents {
   'petal:collected': { 
     type: PetalType; 
@@ -1020,4 +1144,15 @@ export interface GameEvents {
   'workshop:recipe_unlocked': { recipeId: string };
   'workshop:panel_opened': {};
   'workshop:stats_updated': { stats: WorkshopProductionStats };
+  'story:chapter_start': { chapterId: string; chapterTitle: string };
+  'story:chapter_complete': { chapterId: string; chapterTitle: string };
+  'story:chapter_settled': { chapterId: string; settlementData: ChapterSettlementData };
+  'story:goal_progress': { chapterId: string; goalId: string; current: number; target: number };
+  'story:goal_complete': { chapterId: string; goal: ChapterGoal };
+  'story:dialogue_start': { chapterId: string; dialogue: ChapterDialogue };
+  'story:dialogue_end': { chapterId: string };
+  'story:special_recipe_unlocked': { chapterId: string; recipeId: string };
+  'story:reward_claimed': { chapterId: string; reward: ChapterReward };
+  'story:all_complete': { totalScore: number };
+  'story:review_opened': {};
 }

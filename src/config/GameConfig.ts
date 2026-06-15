@@ -48,7 +48,12 @@ import {
   WorkshopState,
   WorkshopRecipeState,
   WorkshopProductionStats,
-  ProcessingType
+  ProcessingType,
+  ChapterConfig,
+  ChapterState,
+  ChapterStatus,
+  ChapterGoalType,
+  StoryProgressState
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -2463,7 +2468,8 @@ export const INITIAL_GAME_STATE: GameState = {
   regionUnlockStates: getInitialRegionUnlockStates(),
   currentRegionId: getDefaultCurrentRegionId(),
   lastRegionId: null,
-  workshopState: JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE))
+  workshopState: JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE)),
+  storyProgress: getInitialStoryProgressState()
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -2487,7 +2493,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.4.0';
+export const SAVE_VERSION = '5.5.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
@@ -3089,14 +3095,302 @@ export const SFX_CONFIG: Record<string, { volume: number; context: AudioContextT
   sfx_collect_rare: { volume: 0.6, context: AudioContextType.EXPLORE },
   sfx_collect_legendary: { volume: 0.8, context: AudioContextType.EXPLORE },
   sfx_synthesis: { volume: 0.5, context: AudioContextType.SYNTHESIS },
-  sfx_synthesis_mutation: { volume: 0.7, context: AudioContextType.SYNTHESIS },
-  sfx_synthesis_fail: { volume: 0.4, context: AudioContextType.SYNTHESIS },
+  sfx_synthesis_mutation: { volume: 0.7, context: AudioContextType.SYNTHESIS }, 
+  sfx_synthesis_fail: { volume: 0.4, context: AudioContextType.SYNTHESIS },     
   sfx_weather_change: { volume: 0.4, context: AudioContextType.EXPLORE },
   sfx_time_dawn: { volume: 0.5, context: AudioContextType.EXPLORE },
   sfx_time_night: { volume: 0.5, context: AudioContextType.EXPLORE },
   sfx_rare_drop: { volume: 0.7, context: AudioContextType.EXPLORE },
-  sfx_special_event: { volume: 0.8, context: AudioContextType.EXPLORE },
+  sfx_special_event: { volume: 0.8, context: AudioContextType.EXPLORE },        
   sfx_rain: { volume: 0.2, context: AudioContextType.EXPLORE },
   sfx_wind: { volume: 0.15, context: AudioContextType.EXPLORE },
   sfx_thunder: { volume: 0.6, context: AudioContextType.EXPLORE }
 };
+
+export const STORY_CHAPTERS: ChapterConfig[] = [
+  {
+    id: 'chapter_1',
+    order: 1,
+    title: '第一章：月光初现',
+    subtitle: '森林的呼唤',
+    description: '在梦境森林的入口，你醒来发现自己身处一片陌生的月光林地。远处传来微弱的呼唤声...',
+    icon: '🌙',
+    color: 0x88ccff,
+    regionId: 'moonlight_glade',
+    startDialogue: [
+      { id: 'ch1_d1', speaker: '旁白', text: '你缓缓睁开眼睛，发现自己躺在一片柔软的草地上。', delay: 2000 },
+      { id: 'ch1_d2', speaker: '旁白', text: '柔和的月光透过树叶洒落，周围飘散着淡淡花香。', delay: 2000 },
+      { id: 'ch1_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「你终于来了...我等了你很久...」', expression: 'serious', delay: 2500 },
+      { id: 'ch1_d4', speaker: '你', text: '「你是谁？我为什么会在这里？」', expression: 'surprised', delay: 2000 },
+      { id: 'ch1_d5', speaker: '神秘声音', speakerIcon: '👤', text: '「我是这片森林的守护者。你的恋人正沉睡在森林深处...」', expression: 'sad', delay: 2500 },
+      { id: 'ch1_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「只有收集散落在森林各处的花瓣，才能唤醒她...」', expression: 'serious', delay: 2500 },
+      { id: 'ch1_d7', speaker: '你', text: '「我该怎么做？」', expression: 'serious', delay: 2000 },
+      { id: 'ch1_d8', speaker: '神秘声音', speakerIcon: '👤', text: '「先从收集月光花瓣开始吧，它们蕴含着最基础的力量。」', expression: 'normal', delay: 2500 },
+      { id: 'ch1_d9', speaker: '旁白', text: '你的冒险，从这片月光林地开始了。', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch1_c1', speaker: '神秘声音', speakerIcon: '👤', text: '「很好，你已经掌握了收集花瓣的方法。」', expression: 'happy', delay: 2000 },
+      { id: 'ch1_c2', speaker: '神秘声音', speakerIcon: '👤', text: '「现在，试着将三朵月光花瓣合在一起，会发生奇妙的变化...」', expression: 'normal', delay: 2500 }
+    ],
+    goals: [
+      { id: 'ch1_g1', type: ChapterGoalType.COLLECT_PETAL, title: '初识月光', description: '收集5朵月光花瓣', target: PetalType.MOONLIGHT, targetCount: 5, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch1_g2', type: ChapterGoalType.TOTAL_COLLECTED, title: '收集入门', description: '累计收集10朵花瓣', target: 'total', targetCount: 10, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch1_g3', type: ChapterGoalType.SYNTHESIZE_RECIPE, title: '初次合成', description: '完成1次合成', target: 'recipe_1', targetCount: 1, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.STARLIGHT, count: 2, description: '星光花瓣 ×2' },
+      { type: 'efficiency_boost', boostAmount: 0.1, description: '收集效率提升10%' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_7', unlockHint: '完成本章后解锁月光与星光的融合配方', isUnlocked: false }
+    ]
+  },
+  {
+    id: 'chapter_2',
+    order: 2,
+    title: '第二章：星辰湖畔',
+    subtitle: '星光的指引',
+    description: '沿着小径前行，一片宁静的湖泊出现在眼前。湖面倒映着满天星辰...',
+    icon: '⭐',
+    color: 0xffe66d,
+    regionId: 'starlight_lake',
+    unlockCondition: { type: 'chapter_completed', targetChapterId: 'chapter_1' },
+    startDialogue: [
+      { id: 'ch2_d1', speaker: '旁白', text: '穿过月光林地的小径，你来到了一片静谧的湖泊边。', delay: 2000 },
+      { id: 'ch2_d2', speaker: '你', text: '「这里是...？好美...」', expression: 'surprised', delay: 2000 },
+      { id: 'ch2_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「这是星辰湖畔，星光花瓣的故乡。」', expression: 'happy', delay: 2500 },
+      { id: 'ch2_d4', speaker: '神秘声音', speakerIcon: '👤', text: '「星光蕴含着指引的力量，能让你看到前方的道路。」', expression: 'normal', delay: 2500 },
+      { id: 'ch2_d5', speaker: '你', text: '「我需要收集更多星光花瓣吗？」', expression: 'normal', delay: 2000 },
+      { id: 'ch2_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「是的。星光与月光结合，能产生更强大的力量——露珠。」', expression: 'serious', delay: 2500 },
+      { id: 'ch2_d7', speaker: '神秘声音', speakerIcon: '👤', text: '「但要小心，合成并非每次都会成功...」', expression: 'sad', delay: 2500 },
+      { id: 'ch2_d8', speaker: '你', text: '「我会努力的！」', expression: 'happy', delay: 2000 },
+      { id: 'ch2_d9', speaker: '旁白', text: '星辰湖畔的微风拂过，湖面泛起阵阵星光涟漪。', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch2_c1', speaker: '神秘声音', speakerIcon: '👤', text: '「你已经领悟了星光的力量。」', expression: 'happy', delay: 2000 },
+      { id: 'ch2_c2', speaker: '神秘声音', speakerIcon: '👤', text: '「看，山谷的入口已经打开了，晨露正在等待着你。」', expression: 'normal', delay: 2500 },
+      { id: 'ch2_c3', speaker: '你', text: '「谢谢你的指引，守护者。」', expression: 'happy', delay: 2000 }
+    ],
+    goals: [
+      { id: 'ch2_g1', type: ChapterGoalType.COLLECT_PETAL, title: '星光闪耀', description: '收集5朵星光花瓣', target: PetalType.STARLIGHT, targetCount: 5, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch2_g2', type: ChapterGoalType.UNLOCK_PETAL, title: '露珠凝结', description: '解锁露珠花瓣', target: PetalType.DEW, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch2_g3', type: ChapterGoalType.UNLOCK_REGION, title: '探索山谷', description: '解锁晨露山谷', target: 'dew_valley', targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch2_g4', type: ChapterGoalType.TOTAL_SYNTHESIZED, title: '合成练习', description: '完成3次合成', target: 'total', targetCount: 3, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.DEW, count: 2, description: '露珠花瓣 ×2' },
+      { type: 'recipe', recipeId: 'recipe_8', description: '解锁特殊配方：星光露珠' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_8', unlockHint: '星光与露珠的神秘融合', isUnlocked: false }
+    ]
+  },
+  {
+    id: 'chapter_3',
+    order: 3,
+    title: '第三章：晨露山谷',
+    subtitle: '清新的力量',
+    description: '山谷中弥漫着淡淡的雾气，清晨的露珠在草叶上闪烁着晶莹的光芒...',
+    icon: '💧',
+    color: 0xa8e6cf,
+    regionId: 'dew_valley',
+    unlockCondition: { type: 'chapter_completed', targetChapterId: 'chapter_2' },
+    startDialogue: [
+      { id: 'ch3_d1', speaker: '旁白', text: '踏入晨露山谷，清新的空气扑面而来。', delay: 2000 },
+      { id: 'ch3_d2', speaker: '你', text: '「这里的空气好清新...」', expression: 'happy', delay: 2000 },
+      { id: 'ch3_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「晨露代表着新生与纯净的力量。」', expression: 'normal', delay: 2500 },
+      { id: 'ch3_d4', speaker: '神秘声音', speakerIcon: '👤', text: '「它能净化一切，也能孕育出新的可能。」', expression: 'happy', delay: 2500 },
+      { id: 'ch3_d5', speaker: '你', text: '「我感觉到了...一种温暖的力量...」', expression: 'surprised', delay: 2000 },
+      { id: 'ch3_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「那是露珠在回应你。继续收集它们吧。」', expression: 'normal', delay: 2500 },
+      { id: 'ch3_d7', speaker: '神秘声音', speakerIcon: '👤', text: '「三朵露珠可以合成更强大的荧光。」', expression: 'serious', delay: 2500 },
+      { id: 'ch3_d8', speaker: '旁白', text: '远处的洞穴入口隐约闪烁着神秘的光芒...', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch3_c1', speaker: '神秘声音', speakerIcon: '👤', text: '「晨露的力量已经与你同在。」', expression: 'happy', delay: 2000 },
+      { id: 'ch3_c2', speaker: '神秘声音', speakerIcon: '👤', text: '「荧光洞穴的封印已经松动了，那里有你需要的力量。」', expression: 'serious', delay: 2500 },
+      { id: 'ch3_c3', speaker: '你', text: '「我会去的，为了唤醒她...」', expression: 'serious', delay: 2000 }
+    ],
+    goals: [
+      { id: 'ch3_g1', type: ChapterGoalType.COLLECT_PETAL, title: '晨露收集', description: '收集5朵露珠花瓣', target: PetalType.DEW, targetCount: 5, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch3_g2', type: ChapterGoalType.UNLOCK_PETAL, title: '荧光闪烁', description: '解锁荧光花瓣', target: PetalType.GLOWING, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch3_g3', type: ChapterGoalType.DISCOVER_MUTATION, title: '奇迹发生', description: '发现1种变异花瓣', target: 'mutation', targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch3_g4', type: ChapterGoalType.UNLOCK_REGION, title: '洞穴入口', description: '解锁荧光洞穴', target: 'glowing_cave', targetCount: 1, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.GLOWING, count: 2, description: '荧光花瓣 ×2' },
+      { type: 'efficiency_boost', boostAmount: 0.15, description: '收集效率提升15%' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_9', unlockHint: '露珠与荧光的共鸣配方', isUnlocked: false }
+    ]
+  },
+  {
+    id: 'chapter_4',
+    order: 4,
+    title: '第四章：荧光洞穴',
+    subtitle: '梦境的入口',
+    description: '洞穴深处散发着柔和的荧光，洞壁上的结晶在光芒中若隐若现...',
+    icon: '✨',
+    color: 0xff9ecb,
+    regionId: 'glowing_cave',
+    unlockCondition: { type: 'chapter_completed', targetChapterId: 'chapter_3' },
+    startDialogue: [
+      { id: 'ch4_d1', speaker: '旁白', text: '踏入荧光洞穴，四周的洞壁散发着神秘的光芒。', delay: 2000 },
+      { id: 'ch4_d2', speaker: '你', text: '「这里好美...像梦境一样...」', expression: 'surprised', delay: 2000 },
+      { id: 'ch4_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「荧光是梦境的使者，能连接现实与梦境。」', expression: 'normal', delay: 2500 },
+      { id: 'ch4_d4', speaker: '神秘声音', speakerIcon: '👤', text: '「每一次合成，都可能产生意想不到的变异...」', expression: 'serious', delay: 2500 },
+      { id: 'ch4_d5', speaker: '你', text: '「变异？那是什么？」', expression: 'surprised', delay: 2000 },
+      { id: 'ch4_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「当花瓣的力量超出预期时，就会产生变异。」', expression: 'normal', delay: 2500 },
+      { id: 'ch4_d7', speaker: '神秘声音', speakerIcon: '👤', text: '「变异花瓣拥有独特的力量，是突破极限的关键。」', expression: 'happy', delay: 2500 },
+      { id: 'ch4_d8', speaker: '你', text: '「我明白了，我会小心尝试的。」', expression: 'serious', delay: 2000 },
+      { id: 'ch4_d9', speaker: '旁白', text: '洞穴深处，似乎有什么在呼唤着你...', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch4_c1', speaker: '神秘声音', speakerIcon: '👤', text: '「你已经掌握了变异的奥秘。」', expression: 'happy', delay: 2000 },
+      { id: 'ch4_c2', speaker: '神秘声音', speakerIcon: '👤', text: '「梦境花园的大门已经为你敞开。」', expression: 'normal', delay: 2500 },
+      { id: 'ch4_c3', speaker: '你', text: '「终于...离她更近一步了...」', expression: 'happy', delay: 2000 }
+    ],
+    goals: [
+      { id: 'ch4_g1', type: ChapterGoalType.COLLECT_PETAL, title: '荧光收集', description: '收集5朵荧光花瓣', target: PetalType.GLOWING, targetCount: 5, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch4_g2', type: ChapterGoalType.UNLOCK_PETAL, title: '梦境编织', description: '解锁梦境花瓣', target: PetalType.DREAM, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch4_g3', type: ChapterGoalType.DISCOVER_MUTATION, title: '变异探索', description: '发现2种不同的变异花瓣', target: 'mutation', targetCount: 2, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch4_g4', type: ChapterGoalType.UNLOCK_REGION, title: '花园入口', description: '解锁梦境花园', target: 'dream_garden', targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch4_g5', type: ChapterGoalType.TOTAL_COLLECTED, title: '收集大师', description: '累计收集50朵花瓣', target: 'total', targetCount: 50, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.DREAM, count: 2, description: '梦境花瓣 ×2' },
+      { type: 'recipe', recipeId: 'recipe_10', description: '解锁特殊配方：永恒之径' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_10', unlockHint: '低阶花瓣的终极融合', isUnlocked: false }
+    ]
+  },
+  {
+    id: 'chapter_5',
+    order: 5,
+    title: '第五章：梦境花园',
+    subtitle: '沉睡的真相',
+    description: '穿过洞穴的尽头，一片绚丽的花园出现在眼前。这里是连接梦境与现实的边界...',
+    icon: '🌸',
+    color: 0xc8a2ff,
+    regionId: 'dream_garden',
+    unlockCondition: { type: 'chapter_completed', targetChapterId: 'chapter_4' },
+    startDialogue: [
+      { id: 'ch5_d1', speaker: '旁白', text: '穿过荧光洞穴的尽头，一片绚烂的花园映入眼帘。', delay: 2000 },
+      { id: 'ch5_d2', speaker: '你', text: '「这里是...？」', expression: 'surprised', delay: 2000 },
+      { id: 'ch5_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「这是梦境花园，你恋人沉睡的地方。」', expression: 'sad', delay: 2500 },
+      { id: 'ch5_d4', speaker: '神秘声音', speakerIcon: '👤', text: '「她就在花园的深处...永恒神殿中...」', expression: 'normal', delay: 2500 },
+      { id: 'ch5_d5', speaker: '你', text: '「我终于找到你了...等我...」', expression: 'sad', delay: 2000 },
+      { id: 'ch5_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「但要进入神殿，你需要更强大的力量——永恒。」', expression: 'serious', delay: 2500 },
+      { id: 'ch5_d7', speaker: '神秘声音', speakerIcon: '👤', text: '「梦境花瓣可以合成永恒花瓣，那是进入神殿的钥匙。」', expression: 'normal', delay: 2500 },
+      { id: 'ch5_d8', speaker: '你', text: '「我一定会集齐所有力量，唤醒她！」', expression: 'serious', delay: 2000 },
+      { id: 'ch5_d9', speaker: '旁白', text: '花园深处，永恒神殿的轮廓若隐若现...', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch5_c1', speaker: '神秘声音', speakerIcon: '👤', text: '「你已经拥有了进入神殿的资格。」', expression: 'happy', delay: 2000 },
+      { id: 'ch5_c2', speaker: '神秘声音', speakerIcon: '👤', text: '「但唤醒之花需要所有花瓣的力量汇聚...」', expression: 'serious', delay: 2500 },
+      { id: 'ch5_c3', speaker: '神秘声音', speakerIcon: '👤', text: '「去吧，神殿在等待着你。」', expression: 'normal', delay: 2500 },
+      { id: 'ch5_c4', speaker: '你', text: '「谢谢你，守护者。」', expression: 'happy', delay: 2000 }
+    ],
+    goals: [
+      { id: 'ch5_g1', type: ChapterGoalType.COLLECT_PETAL, title: '梦境收集', description: '收集5朵梦境花瓣', target: PetalType.DREAM, targetCount: 5, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch5_g2', type: ChapterGoalType.UNLOCK_PETAL, title: '永恒绽放', description: '解锁永恒花瓣', target: PetalType.ETERNAL, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch5_g3', type: ChapterGoalType.UNLOCK_REGION, title: '神殿之门', description: '解锁永恒神殿', target: 'eternal_temple', targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch5_g4', type: ChapterGoalType.TOTAL_SYNTHESIZED, title: '炼金大师', description: '完成10次合成', target: 'total', targetCount: 10, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch5_g5', type: ChapterGoalType.DISCOVER_MUTATION, title: '变异收藏家', description: '发现3种变异花瓣', target: 'mutation', targetCount: 3, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.ETERNAL, count: 1, description: '永恒花瓣 ×1' },
+      { type: 'efficiency_boost', boostAmount: 0.2, description: '收集效率提升20%' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_11', unlockHint: '月华融合秘术', isUnlocked: false },
+      { recipeId: 'recipe_12', unlockHint: '星爆结晶秘术', isUnlocked: false }
+    ]
+  },
+  {
+    id: 'chapter_6',
+    order: 6,
+    title: '终章：永恒神殿',
+    subtitle: '恋人的苏醒',
+    description: '神殿的最深处，祭坛上沉睡着你的恋人。所有的力量将在此刻汇聚...',
+    icon: '👑',
+    color: 0xffd700,
+    regionId: 'eternal_temple',
+    unlockCondition: { type: 'chapter_completed', targetChapterId: 'chapter_5' },
+    startDialogue: [
+      { id: 'ch6_d1', speaker: '旁白', text: '推开神殿的大门，金色的光芒从深处涌出。', delay: 2000 },
+      { id: 'ch6_d2', speaker: '你', text: '「这里是...」', expression: 'surprised', delay: 2000 },
+      { id: 'ch6_d3', speaker: '神秘声音', speakerIcon: '👤', text: '「这是永恒神殿，她沉睡的地方。」', expression: 'sad', delay: 2500 },
+      { id: 'ch6_d4', speaker: '旁白', text: '祭坛上，一位少女安静地沉睡着，仿佛只是陷入了一个漫长的梦。', delay: 2000 },
+      { id: 'ch6_d5', speaker: '你', text: '「是她...真的是她...」', expression: 'sad', delay: 2000 },
+      { id: 'ch6_d6', speaker: '神秘声音', speakerIcon: '👤', text: '「唤醒之花需要：1朵永恒花瓣、2朵梦境花瓣、3朵荧光花瓣。」', expression: 'serious', delay: 2500 },
+      { id: 'ch6_d7', speaker: '神秘声音', speakerIcon: '👤', text: '「只有这样，才能打破千年的封印...」', expression: 'normal', delay: 2500 },
+      { id: 'ch6_d8', speaker: '你', text: '「我已经准备好了...」', expression: 'serious', delay: 2000 },
+      { id: 'ch6_d9', speaker: '旁白', text: '神殿的光芒越来越亮，仿佛在期待着这一刻...', delay: 2000 }
+    ],
+    completeDialogue: [
+      { id: 'ch6_c1', speaker: '旁白', text: '所有花瓣的力量汇聚成一道神圣的光芒...', delay: 3000 },
+      { id: 'ch6_c2', speaker: '旁白', text: '唤醒之花在你手中绽放出绚丽的光芒！', delay: 3000 },
+      { id: 'ch6_c3', speaker: '你', text: '「醒醒...快醒醒...」', expression: 'sad', delay: 2000 },
+      { id: 'ch6_c4', speaker: '旁白', text: '少女的睫毛轻轻颤动，缓缓睁开了眼睛...', delay: 3000 },
+      { id: 'ch6_c5', speaker: '恋人', speakerIcon: '💖', text: '「...是你吗？我...我睡了多久...？」', expression: 'surprised', delay: 2500 },
+      { id: 'ch6_c6', speaker: '你', text: '「是我...我终于找到你了...」', expression: 'happy', delay: 2000 },
+      { id: 'ch6_c7', speaker: '恋人', speakerIcon: '💖', text: '「我...我做了一个很长很长的梦...梦里一直有个声音在呼唤我...」', expression: 'happy', delay: 2500 },
+      { id: 'ch6_c8', speaker: '恋人', speakerIcon: '💖', text: '「原来...那个声音...是你...」', expression: 'happy', delay: 2500 },
+      { id: 'ch6_c9', speaker: '你', text: '「我们再也不分开了...」', expression: 'happy', delay: 2000 },
+      { id: 'ch6_c10', speaker: '旁白', text: '在梦境森林的深处，恋人终于重逢...', delay: 3000 },
+      { id: 'ch6_c11', speaker: '旁白', text: '而这，是另一个故事的开始...', delay: 3000 }
+    ],
+    goals: [
+      { id: 'ch6_g1', type: ChapterGoalType.COLLECT_PETAL, title: '永恒之力', description: '收集1朵永恒花瓣', target: PetalType.ETERNAL, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch6_g2', type: ChapterGoalType.COLLECT_PETAL, title: '梦境之力', description: '收集2朵梦境花瓣', target: PetalType.DREAM, targetCount: 2, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch6_g3', type: ChapterGoalType.COLLECT_PETAL, title: '荧光之力', description: '收集3朵荧光花瓣', target: PetalType.GLOWING, targetCount: 3, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch6_g4', type: ChapterGoalType.UNLOCK_PETAL, title: '神圣之花', description: '合成唤醒之花', target: PetalType.WAKEUP, targetCount: 1, currentCount: 0, completed: false, claimed: false },
+      { id: 'ch6_g5', type: ChapterGoalType.SYNTHESIZE_RECIPE, title: '最终合成', description: '使用配方6合成唤醒之花', target: 'recipe_6', targetCount: 1, currentCount: 0, completed: false, claimed: false }
+    ],
+    rewards: [
+      { type: 'petal', petalType: PetalType.WAKEUP, count: 1, description: '唤醒之花 ×1' }
+    ],
+    specialRecipes: [
+      { recipeId: 'recipe_6', unlockHint: '传说中的神圣配方——唤醒之花', isUnlocked: false }
+    ]
+  }
+];
+
+export function getInitialStoryProgressState(): StoryProgressState {
+  const firstChapter = STORY_CHAPTERS.find(c => c.order === 1);
+  
+  const chapterStates: ChapterState[] = STORY_CHAPTERS.map(config => ({
+    chapterId: config.id,
+    status: config.order === 1 ? ChapterStatus.IN_PROGRESS : ChapterStatus.LOCKED,
+    currentGoalIndex: 0,
+    goals: config.goals.map(g => ({ ...g })),
+    specialRecipes: config.specialRecipes.map(r => ({ ...r })),
+    playTimeInChapter: 0,
+    petalsCollectedInChapter: Object.fromEntries(
+      Object.values(PetalType).map(t => [t, 0])
+    ) as Record<PetalType, number>,
+    synthesesInChapter: 0,
+    dialoguesViewed: []
+  }));
+
+  return {
+    currentChapterId: firstChapter ? firstChapter.id : null,
+    chapterStates,
+    allChaptersCompleted: false,
+    totalStoryScore: 0,
+    bestChapterRatings: {}
+  };
+}
+
+export function getChapterConfig(chapterId: string): ChapterConfig | undefined {
+  return STORY_CHAPTERS.find(c => c.id === chapterId);
+}
+
+export function getNextChapterId(currentChapterId: string): string | null {
+  const current = STORY_CHAPTERS.find(c => c.id === currentChapterId);
+  if (!current) return null;
+  const next = STORY_CHAPTERS.find(c => c.order === current.order + 1);
+  return next ? next.id : null;
+}

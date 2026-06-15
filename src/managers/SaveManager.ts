@@ -74,7 +74,8 @@ import {
   getInitialRegionUnlockStates,
   getDefaultCurrentRegionId,
   WORKSHOP_RECIPES,
-  INITIAL_WORKSHOP_STATE
+  INITIAL_WORKSHOP_STATE,
+  getInitialStoryProgressState
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -118,10 +119,11 @@ export class SaveManager {
     this.migrationMap.set('5.3.0', this.migrateFrom5_3_0.bind(this));
     this.migrationMap.set('5.3.1', this.migrateFrom5_3_1.bind(this));
     this.migrationMap.set('5.4.0', this.migrateFrom5_4_0.bind(this));
+    this.migrationMap.set('5.5.0', this.migrateFrom5_5_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0', '5.5.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -523,6 +525,71 @@ export class SaveManager {
             warnings.push(`新增工坊配方 ${recipeId} 已添加默认状态`);
           }
         });
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_5_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.storyProgress) {
+        saveData.gameState.storyProgress = getInitialStoryProgressState();
+        warnings.push('新增剧情章节系统状态已设为默认值');
+      } else {
+        const story = saveData.gameState.storyProgress;
+        const initial = getInitialStoryProgressState();
+        
+        if (!story.chapterStates || story.chapterStates.length === 0) {
+          story.chapterStates = initial.chapterStates;
+          warnings.push('章节状态列表已重建');
+        } else {
+          const existingIds = new Set(story.chapterStates.map((cs: any) => cs.chapterId));
+          initial.chapterStates.forEach(cs => {
+            if (!existingIds.has(cs.chapterId)) {
+              story.chapterStates.push(cs);
+              warnings.push(`新增章节 ${cs.chapterId} 已添加默认状态`);
+            }
+          });
+          
+          story.chapterStates.forEach((cs: any) => {
+            if (!cs.petalsCollectedInChapter) {
+              cs.petalsCollectedInChapter = Object.fromEntries(
+                Object.values(PetalType).map(t => [t, 0])
+              );
+            }
+            if (!cs.synthesesInChapter) cs.synthesesInChapter = 0;
+            if (!cs.playTimeInChapter) cs.playTimeInChapter = 0;
+            if (!Array.isArray(cs.dialoguesViewed)) cs.dialoguesViewed = [];
+            if (!cs.specialRecipes) {
+              const chapterConfig = initial.chapterStates.find(
+                (c: any) => c.chapterId === cs.chapterId
+              );
+              cs.specialRecipes = chapterConfig?.specialRecipes || [];
+            }
+          });
+        }
+        
+        if (!story.currentChapterId) {
+          story.currentChapterId = initial.currentChapterId;
+          const firstChapter = story.chapterStates.find(
+            (cs: any) => cs.chapterId === story.currentChapterId
+          );
+          if (firstChapter) {
+            firstChapter.status = 'in_progress';
+          }
+          warnings.push('当前章节已设为第一章');
+        }
+        
+        if (!story.bestChapterRatings) {
+          story.bestChapterRatings = {};
+        }
+        if (!story.totalStoryScore) {
+          story.totalStoryScore = 0;
+        }
+        if (typeof story.allChaptersCompleted !== 'boolean') {
+          story.allChaptersCompleted = false;
+        }
       }
     }
     return { data: saveData, warnings };

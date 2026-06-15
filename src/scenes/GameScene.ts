@@ -11,6 +11,7 @@ import { RareDropSystem } from '../modules/RareDropSystem';
 import { VisitorSpriteSystem } from '../modules/VisitorSpriteSystem';
 import { RegionUnlockSystem } from '../modules/RegionUnlockSystem';
 import { PetalWorkshopSystem } from '../modules/PetalWorkshopSystem';
+import { StoryChapterSystem } from '../modules/StoryChapterSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -28,6 +29,7 @@ export class GameScene extends Phaser.Scene {
   private visitorSpriteSystem!: VisitorSpriteSystem;
   private regionUnlockSystem!: RegionUnlockSystem;
   private petalWorkshopSystem!: PetalWorkshopSystem;
+  private storyChapterSystem!: StoryChapterSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -90,6 +92,9 @@ export class GameScene extends Phaser.Scene {
     this.petalWorkshopSystem = new PetalWorkshopSystem(this);
     this.petalWorkshopSystem.create();
 
+    this.storyChapterSystem = new StoryChapterSystem(this);
+    this.storyChapterSystem.create();
+
     this.synthesisSystem = new SynthesisSystem(this);
 
     this.uiManager = new UIManager(this, this.synthesisSystem, this.visitorSpriteSystem, this.regionUnlockSystem, this.petalWorkshopSystem);
@@ -100,6 +105,7 @@ export class GameScene extends Phaser.Scene {
     (this as any).petalSystem = this.petalSystem;
     (this as any).player = this.player;
     (this as any).regionUnlockSystem = this.regionUnlockSystem;
+    (this as any).storyChapterSystem = this.storyChapterSystem;
 
     this.setupRegionEventListeners();
 
@@ -165,6 +171,7 @@ export class GameScene extends Phaser.Scene {
     this.visitorSpriteSystem.update(time, delta);
     this.regionUnlockSystem.update(time, delta);
     this.petalWorkshopSystem.update(time, delta);
+    this.storyChapterSystem.update(time, delta);
 
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
@@ -216,6 +223,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.petalWorkshopSystem) {
       this.petalWorkshopSystem.destroy();
+    }
+    if (this.storyChapterSystem) {
+      this.storyChapterSystem.destroy();
     }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();

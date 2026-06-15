@@ -1,20 +1,21 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG, VISITOR_SPRITE_CONFIGS } from '../config/GameConfig';
+import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG, VISITOR_SPRITE_CONFIGS, getChapterConfig } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType, AffectionLevel, VisitorSpriteId } from '../types';
+import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType, AffectionLevel, VisitorSpriteId, ChapterStatus, ChapterReviewData } from '../types';
 
 export class ResultScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private reviewData!: ReviewData;
   private currentPanelIndex: number = 0;
-  private totalPanels: number = 6;
+  private totalPanels: number = 7;
   private scrollContainer!: Phaser.GameObjects.Container;
   private inheritanceOptions: InheritanceOption[] = [];
   private inheritanceUIRefs: Map<number, { cardBg: Phaser.GameObjects.Graphics; costText: Phaser.GameObjects.Text; costBg: Phaser.GameObjects.Graphics }> = new Map();
   private availablePoints: number = 0;
   private selectedInheritance: InheritanceType[] = [];
-  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '访客精灵', '继承策略'];
+  private chapterReviewData: ChapterReviewData[] = [];
+  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '访客精灵', '章节回顾', '继承策略'];
 
   constructor() {
     super('Result');
@@ -28,6 +29,7 @@ export class ResultScene extends Phaser.Scene {
     this.reviewData = SaveManager.getInstance().getReviewData();
     this.inheritanceOptions = this.reviewData.inheritanceOptions;
     this.availablePoints = SaveManager.getInstance().calculateAvailablePoints();
+    this.chapterReviewData = this.getChapterReviewData();
 
     this.createBackground();
     this.createWakeUpAnimation();
@@ -196,7 +198,8 @@ export class ResultScene extends Phaser.Scene {
     this.createMilestonesPanel(2);
     this.createRareDropsPanel(3);
     this.createVisitorSpritePanel(4);
-    this.createInheritancePanel(5);
+    this.createChapterReviewPanel(5);
+    this.createInheritancePanel(6);
 
     this.tweens.add({
       targets: this.scrollContainer,
@@ -811,6 +814,200 @@ export class ResultScene extends Phaser.Scene {
     const mask = this.add.graphics();
     mask.fillStyle(0x000000, 0);
     mask.fillRect(panelX, panelY, GAME_WIDTH, 420);
+
+    this.scrollContainer.add([container, mask]);
+  }
+
+  private getChapterReviewData(): ChapterReviewData[] {
+    const state = SaveManager.getInstance().getGameState();
+    if (!state.storyProgress) return [];
+    
+    return state.storyProgress.chapterStates.map(chapterState => {
+      const config = getChapterConfig(chapterState.chapterId);
+      const bestRating = state.storyProgress.bestChapterRatings[chapterState.chapterId] || null;
+      
+      return {
+        chapterId: chapterState.chapterId,
+        chapterTitle: config?.title || chapterState.chapterId,
+        status: chapterState.status,
+        rating: bestRating,
+        playTime: chapterState.playTimeInChapter,
+        goalsCompleted: chapterState.goals.filter(g => g.completed).length,
+        totalGoals: chapterState.goals.length,
+        completedAt: chapterState.completedAt
+      };
+    }).sort((a, b) => {
+      const configA = getChapterConfig(a.chapterId);
+      const configB = getChapterConfig(b.chapterId);
+      return (configA?.order || 0) - (configB?.order || 0);
+    });
+  }
+
+  private createChapterReviewPanel(panelIndex: number): void {
+    const state = SaveManager.getInstance().getGameState();
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xff6b9d, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '章节回顾', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    const totalScore = state.storyProgress?.totalStoryScore || 0;
+    const scoreText = this.add.text(GAME_WIDTH / 2, panelY + 70, `总剧情分: ${totalScore}`, {
+      fontFamily: 'Arial',
+      fontSize: '16px',
+      color: '#ffd700'
+    }).setOrigin(0.5);
+
+    this.scrollContainer.add([panelBg, panelTitle, scoreText]);
+
+    const container = this.add.container(0, 0);
+    const mask = this.add.graphics();
+    mask.fillRect(30, panelY + 95, panelWidth, 315);
+    container.setMask(mask.createGeometryMask());
+
+    const content = this.add.container(0, 0);
+    container.add(content);
+
+    const formatTime = (seconds: number): string => {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}分${secs}秒`;
+    };
+
+    const statusText: Record<ChapterStatus, string> = {
+      [ChapterStatus.LOCKED]: '🔒 未解锁',
+      [ChapterStatus.IN_PROGRESS]: '⏳ 进行中',
+      [ChapterStatus.COMPLETED]: '✅ 已完成',
+      [ChapterStatus.SETTLED]: '🏆 已结算'
+    };
+
+    const ratingColors: Record<string, string> = {
+      'S': '#ffd700', 'A': '#ff6b9d', 'B': '#88ccff', 'C': '#a8e6cf'
+    };
+
+    this.chapterReviewData.forEach((data, index) => {
+      const config = getChapterConfig(data.chapterId);
+      const cardX = 50;
+      const cardY = panelY + 105 + index * 95;
+      const cardWidth = panelWidth - 40;
+      const cardHeight = 85;
+
+      const isCompleted = data.status === ChapterStatus.COMPLETED || data.status === ChapterStatus.SETTLED;
+      const isInProgress = data.status === ChapterStatus.IN_PROGRESS;
+
+      const cardBg = this.add.graphics();
+      cardBg.fillStyle(isCompleted ? 0x1a2a1a : (isInProgress ? 0x1a1a2a : 0x1a0a1a), 0.9);
+      cardBg.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+      cardBg.lineStyle(2, isCompleted ? 0xa8e6cf : (isInProgress ? 0x88ccff : 0x333333), 0.6);
+      cardBg.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 12);
+
+      const configIcon = config?.icon || '📖';
+      const iconText = this.add.text(cardX + 20, cardY + cardHeight / 2, configIcon, {
+        fontFamily: 'Arial',
+        fontSize: '28px'
+      }).setOrigin(0, 0.5);
+
+      const chapterNum = config?.order || index + 1;
+      const titleText = this.add.text(cardX + 65, cardY + 25, `${chapterNum}. ${data.chapterTitle}`, {
+        fontFamily: 'Arial',
+        fontSize: '15px',
+        color: '#ffffff',
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+
+      const statusLabel = statusText[data.status] || data.status;
+      const statusColor = isCompleted ? '#a8e6cf' : (isInProgress ? '#88ccff' : '#666666');
+      const statusTextObj = this.add.text(cardX + 65, cardY + 50, statusLabel, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: statusColor
+      }).setOrigin(0, 0.5);
+
+      const goalsText = this.add.text(cardX + cardWidth - 140, cardY + 25, 
+        `目标: ${data.goalsCompleted}/${data.totalGoals}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(1, 0.5);
+
+      const timeText = this.add.text(cardX + cardWidth - 140, cardY + 50, 
+        `用时: ${formatTime(data.playTime)}`, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(1, 0.5);
+
+      if (data.rating && isCompleted) {
+        const ratingColor = ratingColors[data.rating] || '#888888';
+        const ratingGlow = this.add.graphics();
+        ratingGlow.fillStyle(parseInt(ratingColor.slice(1), 16), 0.2);
+        ratingGlow.fillCircle(cardX + cardWidth - 40, cardY + cardHeight / 2, 20);
+        
+        const ratingText = this.add.text(cardX + cardWidth - 40, cardY + cardHeight / 2, data.rating, {
+          fontFamily: 'Arial',
+          fontSize: '28px',
+          color: ratingColor,
+          fontStyle: 'bold'
+        }).setOrigin(0.5).setBlendMode(Phaser.BlendModes.ADD);
+        
+        content.add([ratingGlow, ratingText]);
+      }
+
+      if (isInProgress && !isCompleted) {
+        const progressBarBg = this.add.graphics();
+        progressBarBg.fillStyle(0x333333, 0.5);
+        progressBarBg.fillRoundedRect(cardX + 65, cardY + 68, cardWidth - 150, 8, 4);
+        
+        const progress = data.totalGoals > 0 ? data.goalsCompleted / data.totalGoals : 0;
+        const progressBar = this.add.graphics();
+        progressBar.fillStyle(0x88ccff, 0.8);
+        progressBar.fillRoundedRect(cardX + 65, cardY + 68, (cardWidth - 150) * progress, 8, 4);
+        
+        content.add([progressBarBg, progressBar]);
+      }
+
+      content.add([cardBg, iconText, titleText, statusTextObj, goalsText, timeText]);
+    });
+
+    const totalHeight = this.chapterReviewData.length * 95 + 20;
+    if (totalHeight > 315) {
+      let isDragging = false;
+      let startY = 0;
+      let contentY = 0;
+      const maxScroll = Math.max(0, totalHeight - 315);
+
+      const scrollBg = this.add.zone(GAME_WIDTH / 2, panelY + 250, panelWidth, 315);
+      scrollBg.setInteractive();
+
+      scrollBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        isDragging = true;
+        startY = pointer.y - contentY;
+      });
+
+      scrollBg.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (isDragging) {
+          contentY = pointer.y - startY;
+          contentY = Math.max(-maxScroll, Math.min(0, contentY));
+          content.y = contentY;
+        }
+      });
+
+      scrollBg.on('pointerup', () => { isDragging = false; });
+      scrollBg.on('pointerout', () => { isDragging = false; });
+
+      this.scrollContainer.add(scrollBg);
+    }
 
     this.scrollContainer.add([container, mask]);
   }
