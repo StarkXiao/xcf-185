@@ -38,6 +38,7 @@ export class PetalWorkshopSystem {
     this.checkAllRecipeUnlocks();
     this.validateWorkshopState();
     this.restoreActiveJobs();
+    this.runRegressionCheck();
   }
 
   private checkAllRecipeUnlocks(): void {
@@ -969,6 +970,238 @@ export class PetalWorkshopSystem {
     }, Infinity);
 
     return Math.min(recipe.batchMax, minAffordable);
+  }
+
+  public runRegressionCheck(): { passed: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const state = SaveManager.getInstance().getGameState();
+    const workshop = state.workshopState;
+    const now = Date.now();
+
+    if (!workshop || typeof workshop !== 'object') {
+      return { passed: false, errors: ['workshopState 不存在或非对象'] };
+    }
+
+    this.validateOfflineCompletedJobSettlement(errors, workshop, now);
+    this.validateOngoingJobContinuation(errors, workshop, now);
+    this.validateBatchProductionStatsConsistency(errors, workshop);
+    this.validateProductionRecordsPersistence(errors, workshop);
+
+    if (errors.length > 0) {
+      console.warn('[PetalWorkshop] 回归验证未通过:', errors);
+    } else {
+      console.info('[PetalWorkshop] 回归验证全部通过');
+    }
+
+    return { passed: errors.length === 0, errors };
+  }
+
+  private validateOfflineCompletedJobSettlement(errors: string[], workshop: WorkshopState, now: number): void {
+    workshop.activeJobs.forEach(job => {
+      const recipe = this.recipes.find(r => r.id === job.recipeId);
+      if (!recipe) {
+        errors.push(`离线完成工单验证失败: 配方 ${job.recipeId} 不存在`);
+        return;
+      }
+
+      const elapsed = now - job.startTime;
+      if (elapsed >= job.duration) {
+        errors.push(
+          `离线完成工单未结算: job=${job.id} recipe=${job.recipeId} ` +
+          `elapsed=${elapsed}ms duration=${job.duration}ms - ` +
+          `应在 restoreActiveJobs 中被 settleOfflineCompletedJob 结算并移出 activeJobs`
+        );
+      }
+    });
+  }
+
+  private validateOngoingJobContinuation(errors: string[], workshop: WorkshopState, now: number): void {
+    workshop.activeJobs.forEach(job => {
+      const recipe = this.recipes.find(r => r.id === job.recipeId);
+      if (!recipe) return;
+
+      const elapsed = now - job.startTime;
+      if (elapsed < job.duration) {
+        const expectedDuration = recipe.processingTime * job.batchCount;
+        if (job.duration !== expectedDuration) {
+          errors.push(
+            `进行中工单时长不一致: job=${job.id} recipe=${job.recipeId} ` +
+            `stored=${job.duration}ms expected=${expectedDuration}ms ` +
+            `(processingTime=${recipe.processingTime} × batchCount=${job.batchCount})`
+          );
+        }
+
+        const recipeState = workshop.recipeStates.find(rs => rs.recipeId === job.recipeId);
+        if (!recipeState) {
+          errors.push(`进行中工单缺少配方状态: recipe=${job.recipeId}`);
+        } else if (!recipeState.isUnlocked) {
+          errors.push(`进行中工单配方未解锁: recipe=${job.recipeId}`);
+        }
+
+        const duplicateJobs = workshop.activeJobs.filter(j => j.recipeId === job.recipeId);
+        if (duplicateJobs.length > 1) {
+          errors.push(`同配方存在多个并行工单: recipe=${job.recipeId} count=${duplicateJobs.length}`);
+        }
+
+        if (job.startTime > now) {
+          errors.push(`进行中工单起始时间在未来: job=${job.id} startTime=${job.startTime} now=${now}`);
+        }
+      }
+    });
+
+    if (workshop.activeJobs.length > WORKSHOP_MAX_ACTIVE_JOBS) {
+      errors.push(
+        `活跃工单数超限: ${workshop.activeJobs.length} > ${WORKSHOP_MAX_ACTIVE_JOBS}`
+      );
+    }
+  }
+
+  private validateBatchProductionStatsConsistency(errors: string[], workshop: WorkshopState): void {
+    const stats = workshop.productionStats;
+
+    if (stats.totalBatchOperations < 0) {
+      errors.push(`批量操作次数为负: ${stats.totalBatchOperations}`);
+    }
+
+    if (stats.totalProcessed < 0) {
+      errors.push(`总加工次数为负: ${stats.totalProcessed}`);
+    }
+
+    if (stats.totalOutput < 0) {
+      errors.push(`总产出数量为负: ${stats.totalOutput}`);
+    }
+
+    if (stats.totalBatchOperations > 0 && stats.totalProcessed < stats.totalBatchOperations) {
+      errors.push(
+        `批量统计不一致: totalProcessed(${stats.totalProcessed}) < totalBatchOperations(${stats.totalBatchOperations})`
+      );
+    }
+
+    if (stats.totalBatchOperations > 0) {
+      const expectedAvg = stats.totalOutput / stats.totalBatchOperations;
+      if (Math.abs(stats.averageOutputPerRun - expectedAvg) > 0.01) {
+        errors.push(
+          `平均产出不一致: stored=${stats.averageOutputPerRun.toFixed(2)} ` +
+          `expected=${expectedAvg.toFixed(2)} ` +
+          `(totalOutput=${stats.totalOutput} / totalBatchOperations=${stats.totalBatchOperations})`
+        );
+      }
+    } else if (stats.averageOutputPerRun !== 0) {
+      errors.push(`无批量操作时平均产出不为0: ${stats.averageOutputPerRun}`);
+    }
+
+    const recordsBatchSum = workshop.productionRecords.reduce((sum, r) => sum + r.batchCount, 0);
+    if (stats.totalBatchOperations > 0 && workshop.productionRecords.length > 0) {
+      const totalFromRecords = workshop.productionRecords.length;
+      if (totalFromRecords !== stats.totalBatchOperations) {
+        errors.push(
+          `统计与记录批次不一致: stats.totalBatchOperations=${stats.totalBatchOperations} ` +
+          `records.count=${totalFromRecords}`
+        );
+      }
+    }
+
+    const recordsOutputSum = workshop.productionRecords.reduce((sum, r) => sum + r.resultCount, 0);
+    if (stats.totalOutput !== recordsOutputSum) {
+      errors.push(
+        `统计与记录产出不一致: stats.totalOutput=${stats.totalOutput} records.sum=${recordsOutputSum}`
+      );
+    }
+
+    const processingTypeSum = (stats.recipesByProcessingType[ProcessingType.REFINING] || 0) +
+      (stats.recipesByProcessingType[ProcessingType.PURIFYING] || 0) +
+      (stats.recipesByProcessingType[ProcessingType.ENHANCING] || 0);
+    if (processingTypeSum !== stats.totalBatchOperations) {
+      errors.push(
+        `加工类型分项合计不一致: sum(${processingTypeSum}) != totalBatchOperations(${stats.totalBatchOperations}) ` +
+        `[refining=${stats.recipesByProcessingType[ProcessingType.REFINING]} ` +
+        `purifying=${stats.recipesByProcessingType[ProcessingType.PURIFYING]} ` +
+        `enhancing=${stats.recipesByProcessingType[ProcessingType.ENHANCING]}]`
+      );
+    }
+
+    if (stats.peakBatchSize < 1 && stats.totalBatchOperations > 0) {
+      errors.push(`有批量操作记录但 peakBatchSize < 1: ${stats.peakBatchSize}`);
+    }
+
+    const recordsMaxBatch = workshop.productionRecords.reduce((max, r) => Math.max(max, r.batchCount), 0);
+    if (recordsMaxBatch > stats.peakBatchSize && workshop.productionRecords.length > 0) {
+      errors.push(
+        `peakBatchSize 低于记录中最大批量: peakBatchSize=${stats.peakBatchSize} recordsMax=${recordsMaxBatch}`
+      );
+    }
+  }
+
+  private validateProductionRecordsPersistence(errors: string[], workshop: WorkshopState): void {
+    if (!Array.isArray(workshop.productionRecords)) {
+      errors.push('productionRecords 不是数组');
+      return;
+    }
+
+    if (workshop.productionRecords.length > WORKSHOP_MAX_RECORDS) {
+      errors.push(
+        `生产记录超限: ${workshop.productionRecords.length} > ${WORKSHOP_MAX_RECORDS}`
+      );
+    }
+
+    workshop.productionRecords.forEach((record, idx) => {
+      if (!record.id || typeof record.id !== 'string') {
+        errors.push(`记录[${idx}] id 无效: ${record.id}`);
+      }
+      if (!record.recipeId || typeof record.recipeId !== 'string') {
+        errors.push(`记录[${idx}] recipeId 无效: ${record.recipeId}`);
+      } else {
+        const recipe = this.recipes.find(r => r.id === record.recipeId);
+        if (!recipe) {
+          errors.push(`记录[${idx}] 引用不存在的配方: ${record.recipeId}`);
+        }
+      }
+      if (typeof record.batchCount !== 'number' || record.batchCount < 1) {
+        errors.push(`记录[${idx}] batchCount 无效: ${record.batchCount}`);
+      }
+      if (typeof record.resultCount !== 'number' || record.resultCount < 0) {
+        errors.push(`记录[${idx}] resultCount 无效: ${record.resultCount}`);
+      }
+      if (typeof record.timestamp !== 'number' || record.timestamp <= 0) {
+        errors.push(`记录[${idx}] timestamp 无效: ${record.timestamp}`);
+      }
+      if (typeof record.processingTime !== 'number' || record.processingTime <= 0) {
+        errors.push(`记录[${idx}] processingTime 无效: ${record.processingTime}`);
+      }
+
+      if (record.recipeId) {
+        const recipe = this.recipes.find(r => r.id === record.recipeId);
+        if (recipe && record.batchCount > recipe.batchMax) {
+          errors.push(
+            `记录[${idx}] batchCount(${record.batchCount}) 超过配方上限(${recipe.batchMax})`
+          );
+        }
+      }
+    });
+
+    for (let i = 1; i < workshop.productionRecords.length; i++) {
+      if (workshop.productionRecords[i].timestamp > workshop.productionRecords[i - 1].timestamp) {
+        errors.push(
+          `记录时序异常: records[${i}].timestamp(${workshop.productionRecords[i].timestamp}) > ` +
+          `records[${i - 1}].timestamp(${workshop.productionRecords[i - 1].timestamp}) - 应为降序`
+        );
+        break;
+      }
+    }
+
+    const recipeStatesWithProduction = workshop.recipeStates.filter(
+      rs => rs.totalProduced > 0 || rs.totalBatchRuns > 0
+    );
+    recipeStatesWithProduction.forEach(rs => {
+      const hasMatchingRecord = workshop.productionRecords.some(r => r.recipeId === rs.recipeId);
+      if (!hasMatchingRecord && workshop.productionRecords.length >= WORKSHOP_MAX_RECORDS) {
+        // records 已满可能被截断，跳过
+      } else if (!hasMatchingRecord && rs.totalBatchRuns > 0) {
+        errors.push(
+          `配方 ${rs.recipeId} 有产出记录(totalBatchRuns=${rs.totalBatchRuns})但无对应 productionRecord`
+        );
+      }
+    });
   }
 
   public destroy(): void {

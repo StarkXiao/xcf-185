@@ -11,7 +11,8 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "typescript": "^5.3.3",
-    "vite": "^5.0.10"
+    "vite": "^5.0.10",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "phaser": "^3.80.1"
