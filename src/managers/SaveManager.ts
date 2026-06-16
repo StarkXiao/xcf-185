@@ -37,7 +37,8 @@ import {
   AchievementConfig,
   AchievementReward,
   GalleryCategory,
-  GalleryProgress
+  GalleryProgress,
+  ForestCrisisSystemState
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -84,7 +85,8 @@ import {
   getInitialAchievementStates,
   getInitialGalleryProgress,
   getAchievementConfig,
-  ACHIEVEMENT_CONFIGS
+  ACHIEVEMENT_CONFIGS,
+  getInitialForestCrisisState
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -129,10 +131,11 @@ export class SaveManager {
     this.migrationMap.set('5.3.1', this.migrateFrom5_3_1.bind(this));
     this.migrationMap.set('5.4.0', this.migrateFrom5_4_0.bind(this));
     this.migrationMap.set('5.5.0', this.migrateFrom5_5_0.bind(this));
+    this.migrationMap.set('5.6.0', this.migrateFrom5_6_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0', '5.5.0', '5.6.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0', '5.5.0', '5.6.0', '5.7.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -268,7 +271,8 @@ export class SaveManager {
         workshopState: oldState.workshopState || JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE)),
         storyProgress: oldState.storyProgress || getInitialStoryProgressState(),
         achievementStates: oldState.achievementStates || getInitialAchievementStates(),
-        galleryProgress: oldState.galleryProgress || getInitialGalleryProgress()
+        galleryProgress: oldState.galleryProgress || getInitialGalleryProgress(),
+        forestCrisisState: oldState.forestCrisisState || getInitialForestCrisisState()
       }
     };
   }
@@ -646,6 +650,34 @@ export class SaveManager {
         if (typeof redDot.lastViewedAchievements !== 'number') redDot.lastViewedAchievements = 0;
         if (typeof redDot.lastViewedGallery !== 'number') redDot.lastViewedGallery = 0;
         if (!Array.isArray(redDot.galleryNewUnlocks)) redDot.galleryNewUnlocks = [];
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_6_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.forestCrisisState) {
+        saveData.gameState.forestCrisisState = getInitialForestCrisisState();
+        warnings.push('新增森林危机系统状态已设为默认值');
+      } else {
+        const initial = getInitialForestCrisisState();
+        const crisis = saveData.gameState.forestCrisisState;
+        if (!Array.isArray(crisis.activeCrises)) crisis.activeCrises = [];
+        if (!Array.isArray(crisis.resolvedCrises)) crisis.resolvedCrises = [];
+        if (!Array.isArray(crisis.failedCrises)) crisis.failedCrises = [];
+        if (typeof crisis.totalCrisesTriggered !== 'number') crisis.totalCrisesTriggered = 0;
+        if (typeof crisis.totalCrisesResolved !== 'number') crisis.totalCrisesResolved = 0;
+        if (typeof crisis.totalCrisesFailed !== 'number') crisis.totalCrisesFailed = 0;
+        if (typeof crisis.lastCrisisTime !== 'number') crisis.lastCrisisTime = 0;
+        if (typeof crisis.nextCrisisCheckTime !== 'number') crisis.nextCrisisCheckTime = initial.nextCrisisCheckTime;
+        if (!Array.isArray(crisis.crisisSettlements)) crisis.crisisSettlements = [];
+        if (crisis.activePenalty !== null && typeof crisis.activePenalty === 'object') {
+          if (typeof crisis.activePenalty.efficiencyPenalty !== 'number') crisis.activePenalty.efficiencyPenalty = 0;
+          if (typeof crisis.activePenalty.remainingDuration !== 'number') crisis.activePenalty.remainingDuration = 0;
+        }
+        crisis.activeCrises = crisis.activeCrises.filter((c: any) => c.status !== 'dormant');
       }
     }
     return { data: saveData, warnings };

@@ -13,6 +13,7 @@ import { RegionUnlockSystem } from '../modules/RegionUnlockSystem';
 import { PetalWorkshopSystem } from '../modules/PetalWorkshopSystem';
 import { StoryChapterSystem } from '../modules/StoryChapterSystem';
 import { AchievementSystem } from '../modules/AchievementSystem';
+import { ForestCrisisSystem } from '../modules/ForestCrisisSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -32,6 +33,7 @@ export class GameScene extends Phaser.Scene {
   private petalWorkshopSystem!: PetalWorkshopSystem;
   private storyChapterSystem!: StoryChapterSystem;
   private achievementSystem!: AchievementSystem;
+  private forestCrisisSystem!: ForestCrisisSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -99,6 +101,9 @@ export class GameScene extends Phaser.Scene {
 
     this.achievementSystem = new AchievementSystem(this);
     this.achievementSystem.create();
+
+    this.forestCrisisSystem = new ForestCrisisSystem(this);
+    this.forestCrisisSystem.create();
 
     this.synthesisSystem = new SynthesisSystem(this);
 
@@ -178,6 +183,8 @@ export class GameScene extends Phaser.Scene {
     this.petalWorkshopSystem.update(time, delta);
     this.storyChapterSystem.update(time, delta);
 
+    this.forestCrisisSystem.update(time, delta);
+
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
       SaveManager.getInstance().updatePlayTime(1);
@@ -236,6 +243,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.achievementSystem) {
       this.achievementSystem.destroy();
+    }
+    if (this.forestCrisisSystem) {
+      this.forestCrisisSystem.destroy();
     }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();

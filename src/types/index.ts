@@ -272,6 +272,119 @@ export interface GalleryProgress {
   lastViewedTime: number;
 }
 
+export enum CrisisType {
+  POLLUTION = 'pollution',
+  DECAY = 'decay',
+  CORRUPTION = 'corruption',
+  WITHER = 'wither',
+  BLIGHT = 'blight'
+}
+
+export enum CrisisSeverity {
+  MINOR = 'minor',
+  MODERATE = 'moderate',
+  MAJOR = 'major',
+  CATASTROPHIC = 'catastrophic'
+}
+
+export enum CrisisStatus {
+  DORMANT = 'dormant',
+  WARNING = 'warning',
+  ACTIVE = 'active',
+  PURIFYING = 'purifying',
+  RESOLVED = 'resolved',
+  FAILED = 'failed'
+}
+
+export interface CrisisPurifyCost {
+  petalType: PetalType;
+  count: number;
+}
+
+export interface CrisisSpecialDrop {
+  petalType: PetalType;
+  count: number;
+  probability: number;
+}
+
+export interface CrisisGlobalEffect {
+  spawnRateMultiplier: number;
+  rareDropMultiplier: number;
+  collectRangePenalty: number;
+  efficiencyPenalty: number;
+  description: string;
+}
+
+export interface ForestCrisisConfig {
+  id: string;
+  type: CrisisType;
+  name: string;
+  description: string;
+  icon: string;
+  color: number;
+  severity: CrisisSeverity;
+  duration: number;
+  purifyTime: number;
+  purifyCosts: CrisisPurifyCost[];
+  specialDrops: CrisisSpecialDrop[];
+  globalEffect: CrisisGlobalEffect;
+  triggerCondition: {
+    minPlayTime: number;
+    minTotalCollected: number;
+    cooldown: number;
+  };
+  warningDuration: number;
+  failurePenalty: {
+    petalLossPercent: number;
+    efficiencyPenalty: number;
+    penaltyDuration: number;
+  };
+}
+
+export interface ForestCrisisInstance {
+  crisisId: string;
+  status: CrisisStatus;
+  startedAt: number;
+  warningStartedAt: number;
+  timeRemaining: number;
+  purifyProgress: number;
+  purifyTarget: number;
+  costsPaid: CrisisPurifyCost[];
+  resolvedAt: number;
+  failedAt: number;
+  regionId: string;
+}
+
+export interface ForestCrisisSettlement {
+  crisisId: string;
+  crisisName: string;
+  type: CrisisType;
+  severity: CrisisSeverity;
+  wasResolved: boolean;
+  timeTaken: number;
+  petalsLost: { petalType: PetalType; count: number }[];
+  specialDropsGained: { petalType: PetalType; count: number }[];
+  efficiencyPenalty: number;
+  penaltyDuration: number;
+  timestamp: number;
+}
+
+export interface ForestCrisisSystemState {
+  activeCrises: ForestCrisisInstance[];
+  resolvedCrises: string[];
+  failedCrises: string[];
+  totalCrisesTriggered: number;
+  totalCrisesResolved: number;
+  totalCrisesFailed: number;
+  lastCrisisTime: number;
+  nextCrisisCheckTime: number;
+  crisisSettlements: ForestCrisisSettlement[];
+  activePenalty: {
+    efficiencyPenalty: number;
+    remainingDuration: number;
+  } | null;
+}
+
 export interface GameState {
   playerX: number;
   playerY: number;
@@ -312,6 +425,7 @@ export interface GameState {
   storyProgress: StoryProgressState;
   achievementStates: AchievementState[];
   galleryProgress: GalleryProgress;
+  forestCrisisState: ForestCrisisSystemState;
 }
 
 export interface AudioContextPreferences {
@@ -1277,4 +1391,13 @@ export interface GameEvents {
   'gallery:item_discovered': { itemId: string; category: GalleryCategory };
   'gallery:panel_opened': {};
   'playtime:update': { playTime: number };
+  'crisis:warning': { crisisId: string; crisisName: string; type: CrisisType; severity: CrisisSeverity; timeRemaining: number; regionId: string };
+  'crisis:active': { crisisId: string; crisisName: string; type: CrisisType; severity: CrisisSeverity; duration: number; regionId: string; globalEffect: CrisisGlobalEffect };
+  'crisis:purify_start': { crisisId: string; crisisName: string; purifyTime: number; costs: CrisisPurifyCost[] };
+  'crisis:purify_progress': { crisisId: string; progress: number; target: number };
+  'crisis:resolved': { crisisId: string; crisisName: string; type: CrisisType; specialDrops: CrisisSpecialDrop[]; settlement: ForestCrisisSettlement };
+  'crisis:failed': { crisisId: string; crisisName: string; type: CrisisType; severity: CrisisSeverity; settlement: ForestCrisisSettlement };
+  'crisis:penalty_applied': { efficiencyPenalty: number; duration: number };
+  'crisis:penalty_expired': {};
+  'crisis:popup_alert': { crisisId: string; crisisName: string; icon: string; description: string; urgency: 'warning' | 'critical' };
 }

@@ -63,7 +63,11 @@ import {
   AchievementState,
   GalleryCategory,
   GalleryItem,
-  GalleryProgress
+  GalleryProgress,
+  CrisisType,
+  CrisisSeverity,
+  ForestCrisisConfig,
+  ForestCrisisSystemState
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -2486,7 +2490,8 @@ export const INITIAL_GAME_STATE: GameState = {
   workshopState: JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE)),
   storyProgress: getInitialStoryProgressState(),
   achievementStates: getInitialAchievementStates(),
-  galleryProgress: getInitialGalleryProgress()
+  galleryProgress: getInitialGalleryProgress(),
+  forestCrisisState: getInitialForestCrisisState()
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -2510,7 +2515,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.6.0';
+export const SAVE_VERSION = '5.7.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
@@ -3747,6 +3752,192 @@ export function getInitialGalleryProgress(): GalleryProgress {
     discoveredItems: [],
     lastViewedTime: 0
   };
+}
+
+export const FOREST_CRISIS_CONFIGS: ForestCrisisConfig[] = [
+  {
+    id: 'crisis_pollution_glade',
+    type: CrisisType.POLLUTION,
+    name: '瘴气侵蚀',
+    description: '月光林地被不明瘴气侵蚀，花瓣生长受到严重威胁',
+    icon: '🌫️',
+    color: 0x666633,
+    severity: CrisisSeverity.MINOR,
+    duration: 60000,
+    purifyTime: 10000,
+    purifyCosts: [
+      { petalType: PetalType.MOONLIGHT, count: 3 },
+      { petalType: PetalType.DEW, count: 2 }
+    ],
+    specialDrops: [
+      { petalType: PetalType.MOONLIGHT_SHIMMER, count: 1, probability: 0.3 },
+      { petalType: PetalType.DEW_CRYSTAL, count: 1, probability: 0.2 }
+    ],
+    globalEffect: {
+      spawnRateMultiplier: 0.7,
+      rareDropMultiplier: 0.8,
+      collectRangePenalty: 0.1,
+      efficiencyPenalty: 0.1,
+      description: '瘴气弥漫，花瓣刷新降低30%，稀有掉落降低20%'
+    },
+    triggerCondition: { minPlayTime: 60, minTotalCollected: 20, cooldown: 120000 },
+    warningDuration: 10000,
+    failurePenalty: { petalLossPercent: 5, efficiencyPenalty: 0.1, penaltyDuration: 60000 }
+  },
+  {
+    id: 'crisis_decay_lake',
+    type: CrisisType.DECAY,
+    name: '湖水枯萎',
+    description: '星辰湖畔的水源正在枯竭，星光花瓣濒临消亡',
+    icon: '💧',
+    color: 0x445566,
+    severity: CrisisSeverity.MODERATE,
+    duration: 50000,
+    purifyTime: 12000,
+    purifyCosts: [
+      { petalType: PetalType.STARLIGHT, count: 4 },
+      { petalType: PetalType.MOONLIGHT, count: 2 },
+      { petalType: PetalType.DEW, count: 3 }
+    ],
+    specialDrops: [
+      { petalType: PetalType.STARLIGHT_BURST, count: 1, probability: 0.25 },
+      { petalType: PetalType.ETERNAL, count: 1, probability: 0.1 }
+    ],
+    globalEffect: {
+      spawnRateMultiplier: 0.5,
+      rareDropMultiplier: 0.6,
+      collectRangePenalty: 0.15,
+      efficiencyPenalty: 0.15,
+      description: '水源枯竭，花瓣刷新降低50%，稀有掉落降低40%'
+    },
+    triggerCondition: { minPlayTime: 180, minTotalCollected: 50, cooldown: 180000 },
+    warningDuration: 8000,
+    failurePenalty: { petalLossPercent: 10, efficiencyPenalty: 0.15, penaltyDuration: 90000 }
+  },
+  {
+    id: 'crisis_corruption_cave',
+    type: CrisisType.CORRUPTION,
+    name: '暗影腐化',
+    description: '荧光洞穴深处涌出黑暗力量，荧光花瓣正在被腐化',
+    icon: '🌑',
+    color: 0x330033,
+    severity: CrisisSeverity.MAJOR,
+    duration: 45000,
+    purifyTime: 15000,
+    purifyCosts: [
+      { petalType: PetalType.GLOWING, count: 5 },
+      { petalType: PetalType.DREAM, count: 3 },
+      { petalType: PetalType.STARLIGHT, count: 3 }
+    ],
+    specialDrops: [
+      { petalType: PetalType.GLOWING_EMBER, count: 2, probability: 0.35 },
+      { petalType: PetalType.DREAM_PHANTOM, count: 1, probability: 0.2 },
+      { petalType: PetalType.ETERNAL, count: 1, probability: 0.15 }
+    ],
+    globalEffect: {
+      spawnRateMultiplier: 0.4,
+      rareDropMultiplier: 0.5,
+      collectRangePenalty: 0.2,
+      efficiencyPenalty: 0.2,
+      description: '暗影笼罩，花瓣刷新降低60%，稀有掉落降低50%，收集范围缩减'
+    },
+    triggerCondition: { minPlayTime: 300, minTotalCollected: 100, cooldown: 240000 },
+    warningDuration: 6000,
+    failurePenalty: { petalLossPercent: 15, efficiencyPenalty: 0.2, penaltyDuration: 120000 }
+  },
+  {
+    id: 'crisis_wither_garden',
+    type: CrisisType.WITHER,
+    name: '梦境凋零',
+    description: '梦境花园中的一切正在迅速凋零，梦的力量在消散',
+    icon: '🥀',
+    color: 0x553344,
+    severity: CrisisSeverity.MAJOR,
+    duration: 40000,
+    purifyTime: 18000,
+    purifyCosts: [
+      { petalType: PetalType.DREAM, count: 5 },
+      { petalType: PetalType.GLOWING, count: 4 },
+      { petalType: PetalType.ETERNAL, count: 1 }
+    ],
+    specialDrops: [
+      { petalType: PetalType.DREAM_PHANTOM, count: 2, probability: 0.3 },
+      { petalType: PetalType.ETERNAL, count: 1, probability: 0.25 },
+      { petalType: PetalType.WAKEUP, count: 1, probability: 0.05 }
+    ],
+    globalEffect: {
+      spawnRateMultiplier: 0.3,
+      rareDropMultiplier: 0.4,
+      collectRangePenalty: 0.25,
+      efficiencyPenalty: 0.25,
+      description: '梦境凋零，花瓣刷新降低70%，稀有掉落降低60%，效率大幅下降'
+    },
+    triggerCondition: { minPlayTime: 480, minTotalCollected: 200, cooldown: 300000 },
+    warningDuration: 5000,
+    failurePenalty: { petalLossPercent: 20, efficiencyPenalty: 0.25, penaltyDuration: 150000 }
+  },
+  {
+    id: 'crisis_blight_temple',
+    type: CrisisType.BLIGHT,
+    name: '永恒枯疫',
+    description: '永恒神殿遭遇终极枯疫，所有花瓣力量面临毁灭性打击',
+    icon: '💀',
+    color: 0x220022,
+    severity: CrisisSeverity.CATASTROPHIC,
+    duration: 35000,
+    purifyTime: 20000,
+    purifyCosts: [
+      { petalType: PetalType.ETERNAL, count: 2 },
+      { petalType: PetalType.DREAM, count: 5 },
+      { petalType: PetalType.GLOWING, count: 5 },
+      { petalType: PetalType.MOONLIGHT, count: 5 }
+    ],
+    specialDrops: [
+      { petalType: PetalType.WAKEUP, count: 1, probability: 0.1 },
+      { petalType: PetalType.ETERNAL, count: 2, probability: 0.3 },
+      { petalType: PetalType.DREAM_PHANTOM, count: 2, probability: 0.4 }
+    ],
+    globalEffect: {
+      spawnRateMultiplier: 0.2,
+      rareDropMultiplier: 0.3,
+      collectRangePenalty: 0.3,
+      efficiencyPenalty: 0.3,
+      description: '枯疫降临，花瓣刷新降低80%，稀有掉落降低70%，收集与效率严重受损'
+    },
+    triggerCondition: { minPlayTime: 600, minTotalCollected: 300, cooldown: 600000 },
+    warningDuration: 4000,
+    failurePenalty: { petalLossPercent: 25, efficiencyPenalty: 0.3, penaltyDuration: 180000 }
+  }
+];
+
+export const CRISIS_REGION_MAP: Record<string, string> = {
+  'crisis_pollution_glade': 'moonlight_glade',
+  'crisis_decay_lake': 'starlight_lake',
+  'crisis_corruption_cave': 'glowing_cave',
+  'crisis_wither_garden': 'dream_garden',
+  'crisis_blight_temple': 'eternal_temple'
+};
+
+export const CRISIS_CHECK_INTERVAL = 30000;
+export const MAX_CONCURRENT_CRISES = 2;
+export const MAX_CRISIS_SETTLEMENTS = 20;
+export const CRISIS_PURIFY_PROGRESS_PER_SECOND = 100;
+
+export const INITIAL_FOREST_CRISIS_STATE: ForestCrisisSystemState = {
+  activeCrises: [],
+  resolvedCrises: [],
+  failedCrises: [],
+  totalCrisesTriggered: 0,
+  totalCrisesResolved: 0,
+  totalCrisesFailed: 0,
+  lastCrisisTime: 0,
+  nextCrisisCheckTime: CRISIS_CHECK_INTERVAL,
+  crisisSettlements: [],
+  activePenalty: null
+};
+
+export function getInitialForestCrisisState(): ForestCrisisSystemState {
+  return JSON.parse(JSON.stringify(INITIAL_FOREST_CRISIS_STATE));
 }
 
 export function getGalleryItemsByCategory(category: GalleryCategory): GalleryItem[] {
