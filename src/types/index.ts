@@ -164,6 +164,114 @@ export interface SynthesisRecipe {
   hintFail?: string;
 }
 
+export enum AchievementCategory {
+  COLLECTION = 'collection',
+  SYNTHESIS = 'synthesis',
+  EXPLORATION = 'exploration',
+  MILESTONE = 'milestone',
+  HIDDEN = 'hidden',
+  SOCIAL = 'social',
+  STORY = 'story'
+}
+
+export enum AchievementRarity {
+  COMMON = 'common',
+  RARE = 'rare',
+  EPIC = 'epic',
+  LEGENDARY = 'legendary'
+}
+
+export enum AchievementConditionType {
+  PETAL_COLLECTED = 'petal_collected',
+  PETAL_UNLOCKED = 'petal_unlocked',
+  TOTAL_COLLECTED = 'total_collected',
+  TOTAL_SYNTHESIZED = 'total_synthesized',
+  PLAY_TIME = 'play_time',
+  REGION_UNLOCKED = 'region_unlocked',
+  RECIPE_SYNTHESIZED = 'recipe_synthesized',
+  MUTATION_DISCOVERED = 'mutation_discovered',
+  ALL_NORMAL_PETALS = 'all_normal_petals',
+  ALL_MUTATION_PETALS = 'all_mutation_petals',
+  ALL_FAILED_PETALS = 'all_failed_petals',
+  CONSECUTIVE_COLLECT = 'consecutive_collect',
+  VISITOR_INTERACTIONS = 'visitor_interactions',
+  ALL_REGIONS_UNLOCKED = 'all_regions_unlocked',
+  GAME_COMPLETED = 'game_completed',
+  WORKSHOP_PRODUCTION = 'workshop_production',
+  CHAPTER_COMPLETED = 'chapter_completed',
+  SPECIAL_EVENT = 'special_event',
+  NO_FAILURE_STREAK = 'no_failure_streak',
+  PERFECT_SYNTHESIS = 'perfect_synthesis'
+}
+
+export interface AchievementCondition {
+  type: AchievementConditionType;
+  target?: PetalType | string;
+  targetCount?: number;
+  description?: string;
+}
+
+export interface AchievementReward {
+  type: 'petal' | 'efficiency_boost' | 'unlock_hint' | 'exclusive_title';
+  petalType?: PetalType;
+  count?: number;
+  boostAmount?: number;
+  title?: string;
+  description: string;
+}
+
+export interface AchievementConfig {
+  id: string;
+  title: string;
+  description: string;
+  category: AchievementCategory;
+  rarity: AchievementRarity;
+  icon: string;
+  color: number;
+  conditions: AchievementCondition[];
+  reward?: AchievementReward;
+  isHidden: boolean;
+  unlockHint?: string;
+  order: number;
+}
+
+export interface AchievementState {
+  achievementId: string;
+  isUnlocked: boolean;
+  unlockedAt?: number;
+  isClaimed: boolean;
+  claimedAt?: number;
+  progress: number;
+  currentCount: number;
+  targetCount: number;
+}
+
+export enum GalleryCategory {
+  NORMAL = 'normal',
+  MUTATION = 'mutation',
+  FAILED = 'failed',
+  REGION = 'region',
+  RECIPE = 'recipe',
+  VISITOR = 'visitor',
+  CHAPTER = 'chapter'
+}
+
+export interface GalleryItem {
+  id: string;
+  category: GalleryCategory;
+  name: string;
+  description: string;
+  icon: string;
+  color: number;
+  unlockHint: string;
+  data?: any;
+}
+
+export interface GalleryProgress {
+  discoveredItems: string[];
+  lastViewedTime: number;
+}
+
 export interface GameState {
   playerX: number;
   playerY: number;
@@ -202,6 +310,8 @@ export interface GameState {
   lastRegionId: string | null;
   workshopState: WorkshopState;
   storyProgress: StoryProgressState;
+  achievementStates: AchievementState[];
+  galleryProgress: GalleryProgress;
 }
 
 export interface AudioContextPreferences {
@@ -711,6 +821,11 @@ export interface RedDotState {
   claimableCommissions: string[];
   claimableCommissionChains: string[];
   lastViewedCommission: number;
+  newlyUnlockedAchievements: string[];
+  claimableAchievements: string[];
+  lastViewedAchievements: number;
+  lastViewedGallery: number;
+  galleryNewUnlocks: PetalType[];
 }
 
 export interface DailyReward {
@@ -1155,4 +1270,11 @@ export interface GameEvents {
   'story:reward_claimed': { chapterId: string; reward: ChapterReward };
   'story:all_complete': { totalScore: number };
   'story:review_opened': {};
+  'achievement:unlocked': { achievementId: string; config: AchievementConfig };
+  'achievement:progress': { achievementId: string; current: number; target: number };
+  'achievement:claimed': { achievementId: string; reward: AchievementReward };
+  'achievement:panel_opened': {};
+  'gallery:item_discovered': { itemId: string; category: GalleryCategory };
+  'gallery:panel_opened': {};
+  'playtime:update': { playTime: number };
 }

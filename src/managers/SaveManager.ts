@@ -32,7 +32,12 @@ import {
   EnvironmentStats,
   RareDropEvent,
   WorkshopState,
-  ProcessingType
+  ProcessingType,
+  AchievementState,
+  AchievementConfig,
+  AchievementReward,
+  GalleryCategory,
+  GalleryProgress
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -75,7 +80,11 @@ import {
   getDefaultCurrentRegionId,
   WORKSHOP_RECIPES,
   INITIAL_WORKSHOP_STATE,
-  getInitialStoryProgressState
+  getInitialStoryProgressState,
+  getInitialAchievementStates,
+  getInitialGalleryProgress,
+  getAchievementConfig,
+  ACHIEVEMENT_CONFIGS
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -123,7 +132,7 @@ export class SaveManager {
   }
 
   private getVersionOrder(): string[] {
-    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0', '5.5.0'];
+    return ['1.0.0', '2.0.0', '3.0.0', '4.0.0', '4.1.0', '5.0.0', '5.1.0', '5.2.0', '5.3.0', '5.3.1', '5.4.0', '5.5.0', '5.6.0'];
   }
 
   private compareVersions(v1: string, v2: string): number {
@@ -255,7 +264,11 @@ export class SaveManager {
         })),
         regionUnlockStates: oldState.regionUnlockStates || getInitialRegionUnlockStates(),
         currentRegionId: oldState.currentRegionId || getDefaultCurrentRegionId(),
-        lastRegionId: oldState.lastRegionId === undefined ? null : oldState.lastRegionId
+        lastRegionId: oldState.lastRegionId === undefined ? null : oldState.lastRegionId,
+        workshopState: oldState.workshopState || JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE)),
+        storyProgress: oldState.storyProgress || getInitialStoryProgressState(),
+        achievementStates: oldState.achievementStates || getInitialAchievementStates(),
+        galleryProgress: oldState.galleryProgress || getInitialGalleryProgress()
       }
     };
   }
@@ -274,6 +287,11 @@ export class SaveManager {
     if (!Array.isArray(mergedRedDot.claimableCommissions)) mergedRedDot.claimableCommissions = [];
     if (!Array.isArray(mergedRedDot.claimableCommissionChains)) mergedRedDot.claimableCommissionChains = [];
     if (typeof mergedRedDot.lastViewedCommission !== 'number') mergedRedDot.lastViewedCommission = 0;
+    if (!Array.isArray(mergedRedDot.newlyUnlockedAchievements)) mergedRedDot.newlyUnlockedAchievements = [];
+    if (!Array.isArray(mergedRedDot.claimableAchievements)) mergedRedDot.claimableAchievements = [];
+    if (typeof mergedRedDot.lastViewedAchievements !== 'number') mergedRedDot.lastViewedAchievements = 0;
+    if (typeof mergedRedDot.lastViewedGallery !== 'number') mergedRedDot.lastViewedGallery = 0;
+    if (!Array.isArray(mergedRedDot.galleryNewUnlocks)) mergedRedDot.galleryNewUnlocks = [];
 
     saveData.gameState = { ...initialState, ...oldState, redDotState: mergedRedDot };
     saveData.settings = { ...initialSettings, ...oldSettings };
@@ -591,6 +609,44 @@ export class SaveManager {
           story.allChaptersCompleted = false;
         }
       }
+      
+      if (!saveData.gameState.achievementStates) {
+        saveData.gameState.achievementStates = getInitialAchievementStates();
+        warnings.push('新增成就系统状态已设为默认值');
+      } else {
+        const initialAchievements = getInitialAchievementStates();
+        const existingIds = new Set(saveData.gameState.achievementStates.map((a: any) => a.achievementId));
+        initialAchievements.forEach(ia => {
+          if (!existingIds.has(ia.achievementId)) {
+            saveData.gameState.achievementStates.push(ia);
+          }
+        });
+        saveData.gameState.achievementStates.forEach((a: any) => {
+          if (typeof a.isUnlocked !== 'boolean') a.isUnlocked = false;
+          if (typeof a.isClaimed !== 'boolean') a.isClaimed = false;
+          if (typeof a.progress !== 'number') a.progress = 0;
+          if (typeof a.currentCount !== 'number') a.currentCount = 0;
+          if (typeof a.targetCount !== 'number') a.targetCount = 1;
+        });
+      }
+      
+      if (!saveData.gameState.galleryProgress) {
+        saveData.gameState.galleryProgress = getInitialGalleryProgress();
+        warnings.push('新增收藏馆系统状态已设为默认值');
+      } else {
+        const gallery = saveData.gameState.galleryProgress;
+        if (!Array.isArray(gallery.discoveredItems)) gallery.discoveredItems = [];
+        if (typeof gallery.lastViewedTime !== 'number') gallery.lastViewedTime = 0;
+      }
+      
+      const redDot = saveData.gameState.redDotState;
+      if (redDot) {
+        if (!Array.isArray(redDot.newlyUnlockedAchievements)) redDot.newlyUnlockedAchievements = [];
+        if (!Array.isArray(redDot.claimableAchievements)) redDot.claimableAchievements = [];
+        if (typeof redDot.lastViewedAchievements !== 'number') redDot.lastViewedAchievements = 0;
+        if (typeof redDot.lastViewedGallery !== 'number') redDot.lastViewedGallery = 0;
+        if (!Array.isArray(redDot.galleryNewUnlocks)) redDot.galleryNewUnlocks = [];
+      }
     }
     return { data: saveData, warnings };
   }
@@ -653,6 +709,17 @@ export class SaveManager {
       return save.settings;
     }
     return getInitialSettings();
+  }
+
+  public getSaveData(): SaveData | null {
+    if (this.currentSave) {
+      return this.currentSave;
+    }
+    const save = this.loadSave();
+    if (save) {
+      return save;
+    }
+    return null;
   }
 
   public saveGame(gameState: GameState): void {
@@ -2812,5 +2879,208 @@ export class SaveManager {
 
   public getLastAutoBackupTime(): number {
     return this.lastAutoBackupTime;
+  }
+
+  // ========== 成就系统方法 ==========
+
+  public getAchievementStates(): AchievementState[] {
+    const state = this.getGameState();
+    return state.achievementStates || [];
+  }
+
+  public getAchievementState(achievementId: string): AchievementState | undefined {
+    return this.getAchievementStates().find(a => a.achievementId === achievementId);
+  }
+
+  public updateAchievementProgress(achievementId: string, currentCount: number): boolean {
+    const saveData = this.getSaveData();
+    if (!saveData) return false;
+
+    const achievement = saveData.gameState.achievementStates?.find(a => a.achievementId === achievementId);
+    const config = getAchievementConfig(achievementId);
+
+    if (!achievement || !config || achievement.isUnlocked) return false;
+
+    achievement.currentCount = Math.min(currentCount, achievement.targetCount);
+    achievement.progress = achievement.targetCount > 0 
+      ? Math.min(100, Math.floor((achievement.currentCount / achievement.targetCount) * 100)) 
+      : 0;
+
+    EventManager.getInstance().emit('achievement:progress', {
+      achievementId,
+      current: achievement.currentCount,
+      target: achievement.targetCount
+    });
+
+    if (achievement.currentCount >= achievement.targetCount) {
+      return this.unlockAchievementInternal(achievementId, saveData);
+    }
+
+    this.saveGame(saveData.gameState);
+    return false;
+  }
+
+  public unlockAchievement(achievementId: string): boolean {
+    const saveData = this.getSaveData();
+    if (!saveData) return false;
+    const result = this.unlockAchievementInternal(achievementId, saveData);
+    if (result) this.saveGame(saveData.gameState);
+    return result;
+  }
+
+  private unlockAchievementInternal(achievementId: string, saveData: SaveData): boolean {
+    const achievement = saveData.gameState.achievementStates?.find(a => a.achievementId === achievementId);
+    const config = getAchievementConfig(achievementId);
+
+    if (!achievement || !config || achievement.isUnlocked) return false;
+
+    achievement.isUnlocked = true;
+    achievement.unlockedAt = Date.now();
+    achievement.currentCount = achievement.targetCount;
+    achievement.progress = 100;
+
+    if (config.reward) {
+      const redDot = saveData.gameState.redDotState;
+      if (!redDot.claimableAchievements.includes(achievementId)) {
+        redDot.claimableAchievements.push(achievementId);
+      }
+    }
+
+    const redDot = saveData.gameState.redDotState;
+    if (!redDot.newlyUnlockedAchievements.includes(achievementId)) {
+      redDot.newlyUnlockedAchievements.push(achievementId);
+    }
+
+    EventManager.getInstance().emit('achievement:unlocked', {
+      achievementId,
+      config
+    });
+
+    return true;
+  }
+
+  public claimAchievementReward(achievementId: string): AchievementReward | null {
+    const saveData = this.getSaveData();
+    if (!saveData) return null;
+
+    const achievement = saveData.gameState.achievementStates?.find(a => a.achievementId === achievementId);
+    const config = getAchievementConfig(achievementId);
+
+    if (!achievement || !config || !achievement.isUnlocked || achievement.isClaimed || !config.reward) {
+      return null;
+    }
+
+    achievement.isClaimed = true;
+    achievement.claimedAt = Date.now();
+
+    const redDot = saveData.gameState.redDotState;
+    redDot.claimableAchievements = redDot.claimableAchievements.filter(id => id !== achievementId);
+    redDot.newlyUnlockedAchievements = redDot.newlyUnlockedAchievements.filter(id => id !== achievementId);
+
+    const reward = config.reward;
+    this.applyAchievementReward(reward, saveData);
+
+    EventManager.getInstance().emit('achievement:claimed', {
+      achievementId,
+      reward
+    });
+
+    this.saveGame(saveData.gameState);
+    return reward;
+  }
+
+  private applyAchievementReward(reward: AchievementReward, saveData: SaveData): void {
+    switch (reward.type) {
+      case 'petal':
+        if (reward.petalType && reward.count) {
+          this.addPetalInternal(reward.petalType, reward.count, saveData);
+        }
+        break;
+      case 'efficiency_boost':
+        if (reward.boostAmount) {
+          saveData.gameState.efficiencyBoost = (saveData.gameState.efficiencyBoost || 0) + reward.boostAmount;
+        }
+        break;
+      case 'unlock_hint':
+      case 'exclusive_title':
+        break;
+    }
+  }
+
+  private addPetalInternal(petalType: PetalType, count: number, saveData: SaveData): void {
+    if (!saveData.gameState.petals[petalType]) {
+      saveData.gameState.petals[petalType] = 0;
+    }
+    saveData.gameState.petals[petalType] += count;
+    saveData.gameState.totalCollected += count;
+
+    if (!saveData.gameState.unlockedPetals.includes(petalType)) {
+      saveData.gameState.unlockedPetals.push(petalType);
+    }
+  }
+
+  public markAchievementViewed(achievementId: string): void {
+    const saveData = this.getSaveData();
+    if (!saveData) return;
+    saveData.gameState.redDotState.newlyUnlockedAchievements = 
+      saveData.gameState.redDotState.newlyUnlockedAchievements.filter(id => id !== achievementId);
+    this.saveGame(saveData.gameState);
+  }
+
+  public markAllAchievementsViewed(): void {
+    const saveData = this.getSaveData();
+    if (!saveData) return;
+    saveData.gameState.redDotState.newlyUnlockedAchievements = [];
+    saveData.gameState.redDotState.lastViewedAchievements = Date.now();
+    EventManager.getInstance().emit('achievement:panel_opened', {});
+    this.saveGame(saveData.gameState);
+  }
+
+  // ========== 收藏馆/图鉴系统方法 ==========
+
+  public getGalleryProgress(): GalleryProgress {
+    const state = this.getGameState();
+    return state.galleryProgress || { discoveredItems: [], lastViewedTime: 0 };
+  }
+
+  public discoverGalleryItem(itemId: string, category: GalleryCategory): boolean {
+    const saveData = this.getSaveData();
+    if (!saveData) return false;
+
+    if (!saveData.gameState.galleryProgress) {
+      saveData.gameState.galleryProgress = getInitialGalleryProgress();
+    }
+
+    const progress = saveData.gameState.galleryProgress;
+    if (progress.discoveredItems.includes(itemId)) return false;
+
+    progress.discoveredItems.push(itemId);
+
+    const redDot = saveData.gameState.redDotState;
+    if (!redDot.galleryNewUnlocks.includes(itemId as any)) {
+      redDot.galleryNewUnlocks.push(itemId as any);
+    }
+
+    EventManager.getInstance().emit('gallery:item_discovered', {
+      itemId,
+      category
+    });
+
+    this.saveGame(saveData.gameState);
+    return true;
+  }
+
+  public isGalleryItemDiscovered(itemId: string): boolean {
+    return this.getGalleryProgress().discoveredItems.includes(itemId);
+  }
+
+  public markGalleryViewed(): void {
+    const saveData = this.getSaveData();
+    if (!saveData) return;
+    saveData.gameState.redDotState.galleryNewUnlocks = [];
+    saveData.gameState.galleryProgress.lastViewedTime = Date.now();
+    saveData.gameState.redDotState.lastViewedGallery = Date.now();
+    EventManager.getInstance().emit('gallery:panel_opened', {});
+    this.saveGame(saveData.gameState);
   }
 }

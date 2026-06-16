@@ -1,5 +1,12 @@
 import Phaser from 'phaser';
-import { GAME_WIDTH, GAME_HEIGHT, SAVE_VERSION } from '../config/GameConfig';
+import { 
+  GAME_WIDTH, 
+  GAME_HEIGHT, 
+  SAVE_VERSION,
+  ACHIEVEMENT_CONFIGS,
+  GALLERY_ITEMS,
+  GALLERY_CATEGORY_CONFIG
+} from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
 import { EventManager } from '../managers/EventManager';
@@ -10,7 +17,13 @@ import {
   CollectionTask, 
   CollectionTaskChain, 
   CollectionTaskStatus,
-  RedDotState
+  RedDotState,
+  AchievementCategory,
+  AchievementRarity,
+  AchievementConfig,
+  AchievementState,
+  GalleryCategory,
+  GalleryItem
 } from '../types';
 
 export class MenuScene extends Phaser.Scene {
@@ -26,6 +39,18 @@ export class MenuScene extends Phaser.Scene {
   private commissionListContainer: Phaser.GameObjects.Container | null = null;
   private commissionBtn: Phaser.GameObjects.Text | null = null;
   private commissionRedDot: Phaser.GameObjects.Graphics | null = null;
+  private achievementPanel: Phaser.GameObjects.Container | null = null;
+  private achievementListContainer: Phaser.GameObjects.Container | null = null;
+  private achievementBtn: Phaser.GameObjects.Text | null = null;
+  private achievementRedDot: Phaser.GameObjects.Graphics | null = null;
+  private currentAchievementCategory: AchievementCategory | 'all' = 'all';
+  private achievementCategoryTabs: Phaser.GameObjects.Container[] = [];
+  private galleryPanel: Phaser.GameObjects.Container | null = null;
+  private galleryListContainer: Phaser.GameObjects.Container | null = null;
+  private galleryBtn: Phaser.GameObjects.Text | null = null;
+  private galleryRedDot: Phaser.GameObjects.Graphics | null = null;
+  private currentGalleryCategory: GalleryCategory = GalleryCategory.NORMAL;
+  private galleryCategoryTabs: Phaser.GameObjects.Container[] = [];
 
   constructor() {
     super('Menu');
@@ -186,6 +211,18 @@ export class MenuScene extends Phaser.Scene {
       this.createButton('📊 最近进度', currentY, () => {
         this.openProgressPanel();
       }, 0x4aa85c);
+      currentY += btnSpacing;
+
+      this.achievementBtn = this.createButton('🏆 成就殿堂', currentY, () => {
+        this.openAchievementPanel();
+      }, 0xffd700);
+      this.setupAchievementRedDot();
+      currentY += btnSpacing;
+
+      this.galleryBtn = this.createButton('📚 收藏图鉴', currentY, () => {
+        this.openGalleryPanel();
+      }, 0x9370db);
+      this.setupGalleryRedDot();
       currentY += btnSpacing;
     }
 
@@ -1972,5 +2009,593 @@ export class MenuScene extends Phaser.Scene {
 
     const scrollHeight = Math.max(currentY + 20, GAME_HEIGHT - 140);
     this.commissionListContainer.setSize(GAME_WIDTH, scrollHeight);
+  }
+
+  // ========== 成就系统 ==========
+
+  private setupAchievementRedDot(): void {
+    if (!this.achievementBtn) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const rd: Partial<RedDotState> = state.redDotState || {};
+    const hasUnclaimed = (rd.newlyUnlockedAchievements?.length || 0) > 0 || 
+                        (rd.claimableAchievements?.length || 0) > 0;
+
+    if (this.achievementRedDot) {
+      this.achievementRedDot.destroy();
+      this.achievementRedDot = null;
+    }
+
+    if (hasUnclaimed) {
+      const bounds = this.achievementBtn.getBounds();
+      this.achievementRedDot = this.add.graphics();
+      this.achievementRedDot.fillStyle(0xff4444, 1);
+      this.achievementRedDot.fillCircle(bounds.right, bounds.top, 8);
+      this.achievementRedDot.lineStyle(2, 0xffffff, 1);
+      this.achievementRedDot.strokeCircle(bounds.right, bounds.top, 8);
+      this.achievementRedDot.setDepth(this.achievementBtn.depth + 1);
+    }
+  }
+
+  private setupGalleryRedDot(): void {
+    if (!this.galleryBtn) return;
+
+    const state = SaveManager.getInstance().getGameState();
+    const rd: Partial<RedDotState> = state.redDotState || {};
+    const hasUnclaimed = (rd.galleryNewUnlocks?.length || 0) > 0;
+
+    if (this.galleryRedDot) {
+      this.galleryRedDot.destroy();
+      this.galleryRedDot = null;
+    }
+
+    if (hasUnclaimed) {
+      const bounds = this.galleryBtn.getBounds();
+      this.galleryRedDot = this.add.graphics();
+      this.galleryRedDot.fillStyle(0xff4444, 1);
+      this.galleryRedDot.fillCircle(bounds.right, bounds.top, 8);
+      this.galleryRedDot.lineStyle(2, 0xffffff, 1);
+      this.galleryRedDot.strokeCircle(bounds.right, bounds.top, 8);
+      this.galleryRedDot.setDepth(this.galleryBtn.depth + 1);
+    }
+  }
+
+  private openAchievementPanel(): void {
+    if (this.achievementPanel) return;
+
+    SaveManager.getInstance().markAllAchievementsViewed();
+    this.setupAchievementRedDot();
+
+    this.achievementPanel = this.add.container(0, 0).setDepth(100);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0515, 0.97);
+    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    bg.setInteractive();
+    this.achievementPanel.add(bg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '🏆 成就殿堂', {
+      fontFamily: 'Arial',
+      fontSize: '32px',
+      color: '#ffd700',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.achievementPanel.add(title);
+
+    const achievementStates = SaveManager.getInstance().getAchievementStates();
+    const unlocked = achievementStates.filter(s => s.isUnlocked).length;
+    const statsText = this.add.text(GAME_WIDTH / 2, 95, 
+      `已解锁 ${unlocked} / ${ACHIEVEMENT_CONFIGS.length} 个成就`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#a8e6cf'
+    }).setOrigin(0.5);
+    this.achievementPanel.add(statsText);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeAchievementPanel());
+    this.achievementPanel.add(closeBtn);
+
+    this.createAchievementCategoryTabs();
+
+    this.achievementListContainer = this.add.container(0, 180);
+    this.achievementPanel.add(this.achievementListContainer);
+    this.renderAchievementList();
+
+    this.setupAchievementEventListeners();
+
+    this.achievementPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.achievementPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private closeAchievementPanel(): void {
+    if (!this.achievementPanel) return;
+
+    this.tweens.add({
+      targets: this.achievementPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.achievementPanel) {
+          this.achievementPanel.destroy();
+          this.achievementPanel = null;
+          this.achievementListContainer = null;
+          this.achievementCategoryTabs = [];
+        }
+      }
+    });
+  }
+
+  private createAchievementCategoryTabs(): void {
+    if (!this.achievementPanel) return;
+
+    const categories: { key: AchievementCategory | 'all'; label: string; color: number; icon: string }[] = [
+      { key: 'all', label: '全部', color: 0xffd700, icon: '🏆' },
+      { key: AchievementCategory.COLLECTION, label: '收集', color: 0xff6b9d, icon: '🌸' },
+      { key: AchievementCategory.SYNTHESIS, label: '合成', color: 0x87ceeb, icon: '⚗️' },
+      { key: AchievementCategory.EXPLORATION, label: '探索', color: 0x4aa85c, icon: '🗺️' },
+      { key: AchievementCategory.MILESTONE, label: '里程碑', color: 0xffaa00, icon: '⭐' },
+      { key: AchievementCategory.HIDDEN, label: '隐藏', color: 0x9370db, icon: '❓' },
+      { key: AchievementCategory.STORY, label: '剧情', color: 0x8b0000, icon: '📖' }
+    ];
+
+    const tabWidth = 85;
+    const tabHeight = 55;
+    const startX = 20;
+    const tabY = 125;
+    const spacing = 5;
+
+    this.achievementCategoryTabs = [];
+
+    categories.forEach((cat, index) => {
+      const tabContainer = this.add.container(0, 0);
+      const tabX = startX + index * (tabWidth + spacing);
+      const isActive = this.currentAchievementCategory === cat.key;
+
+      if (tabX + tabWidth > GAME_WIDTH - 20) return;
+
+      const tabBg = this.add.graphics();
+      tabBg.fillStyle(isActive ? cat.color : 0x1a0a2e, isActive ? 0.9 : 0.6);
+      tabBg.fillRoundedRect(tabX, tabY, tabWidth, tabHeight, 10);
+      tabBg.lineStyle(2, cat.color, isActive ? 1 : 0.4);
+      tabBg.strokeRoundedRect(tabX, tabY, tabWidth, tabHeight, 10);
+
+      const iconText = this.add.text(tabX + tabWidth / 2, tabY + 18, cat.icon, {
+        fontFamily: 'Arial',
+        fontSize: '18px'
+      }).setOrigin(0.5);
+
+      const labelText = this.add.text(tabX + tabWidth / 2, tabY + 40, cat.label, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: isActive ? '#ffffff' : '#aaaaaa'
+      }).setOrigin(0.5);
+
+      const hitZone = this.add.zone(tabX + tabWidth / 2, tabY + tabHeight / 2, tabWidth, tabHeight)
+        .setInteractive({ useHandCursor: true });
+
+      hitZone.on('pointerup', () => {
+        this.currentAchievementCategory = cat.key;
+        this.createAchievementCategoryTabs();
+        this.renderAchievementList();
+        AudioManager.getInstance().playSfx('sfx_click');
+      });
+
+      tabContainer.add([tabBg, iconText, labelText, hitZone]);
+      this.achievementCategoryTabs.push(tabContainer);
+      this.achievementPanel!.add(tabContainer);
+    });
+  }
+
+  private renderAchievementList(): void {
+    if (!this.achievementListContainer) return;
+
+    this.achievementListContainer.removeAll(true);
+
+    let filteredAchievements = ACHIEVEMENT_CONFIGS;
+    if (this.currentAchievementCategory !== 'all') {
+      filteredAchievements = ACHIEVEMENT_CONFIGS.filter(a => a.category === this.currentAchievementCategory);
+    }
+
+    const startY = 0;
+    const itemHeight = 100;
+    const itemWidth = GAME_WIDTH - 60;
+    const spacing = 10;
+    let currentY = startY;
+
+    filteredAchievements
+      .sort((a, b) => a.order - b.order)
+      .forEach((config, index) => {
+        const state = SaveManager.getInstance().getAchievementState(config.id);
+        const isUnlocked = state?.isUnlocked || false;
+        const isClaimed = state?.isClaimed || false;
+        const isHidden = config.isHidden && !isUnlocked;
+        const canClaim = isUnlocked && !isClaimed && !!config.reward;
+
+        const y = currentY;
+        const itemBg = this.add.graphics();
+
+        if (isHidden) {
+          itemBg.fillStyle(0x222233, 0.6);
+        } else if (isClaimed) {
+          itemBg.fillStyle(0x334433, 0.5);
+        } else if (canClaim) {
+          itemBg.fillStyle(0x4a4a1a, 0.5);
+        } else if (isUnlocked) {
+          itemBg.fillStyle(0x1a3a4a, 0.6);
+        } else {
+          itemBg.fillStyle(0x1a1a2e, 0.8);
+        }
+        itemBg.fillRoundedRect(30, y, itemWidth, itemHeight, 12);
+
+        const borderColor = isClaimed ? 0x4aa85c : canClaim ? 0xffd700 : isUnlocked ? 0x4a8acf : 0x444466;
+        itemBg.lineStyle(2, borderColor, isClaimed || canClaim ? 0.8 : 0.5);
+        itemBg.strokeRoundedRect(30, y, itemWidth, itemHeight, 12);
+
+        this.achievementListContainer!.add(itemBg);
+
+        const rarityColors: Record<AchievementRarity, number> = {
+          [AchievementRarity.COMMON]: 0xc0c0c0,
+          [AchievementRarity.RARE]: 0x4169e1,
+          [AchievementRarity.EPIC]: 0x9370db,
+          [AchievementRarity.LEGENDARY]: 0xffd700
+        };
+
+        const iconBg = this.add.graphics();
+        iconBg.fillStyle(rarityColors[config.rarity], isUnlocked ? 0.3 : 0.15);
+        iconBg.fillRoundedRect(45, y + 15, 70, 70, 10);
+        iconBg.lineStyle(2, rarityColors[config.rarity], isUnlocked ? 0.8 : 0.4);
+        iconBg.strokeRoundedRect(45, y + 15, 70, 70, 10);
+        this.achievementListContainer!.add(iconBg);
+
+        const iconText = this.add.text(80, y + 50, isHidden ? '❓' : config.icon, {
+          fontFamily: 'Arial',
+          fontSize: '28px'
+        }).setOrigin(0.5);
+        this.achievementListContainer!.add(iconText);
+
+        const title = this.add.text(130, y + 22, isHidden ? '??? 未发现的成就' : config.title, {
+          fontFamily: 'Arial',
+          fontSize: '16px',
+          color: isHidden ? '#666666' : (isUnlocked ? '#ffffff' : '#aaaaaa'),
+          fontStyle: 'bold'
+        });
+        this.achievementListContainer!.add(title);
+
+        const desc = this.add.text(130, y + 48, 
+          isHidden ? (config.unlockHint || '完成特定条件后解锁详情') : config.description, {
+          fontFamily: 'Arial',
+          fontSize: '12px',
+          color: isHidden ? '#555555' : '#888888',
+          wordWrap: { width: itemWidth - 180 }
+        });
+        this.achievementListContainer!.add(desc);
+
+        if (!isHidden && state) {
+          const progress = state.progress / 100;
+          const progressBg = this.add.graphics();
+          progressBg.fillStyle(0x333344, 0.8);
+          progressBg.fillRoundedRect(130, y + 75, itemWidth - 180, 12, 6);
+          this.achievementListContainer!.add(progressBg);
+
+          if (progress > 0 || isUnlocked) {
+            const progressFill = this.add.graphics();
+            progressFill.fillStyle(isUnlocked ? 0x4aa85c : 0x4a8acf, 0.9);
+            progressFill.fillRoundedRect(130, y + 75, (itemWidth - 180) * (isUnlocked ? 1 : progress), 12, 6);
+            this.achievementListContainer!.add(progressFill);
+          }
+
+          const progressText = this.add.text(130 + (itemWidth - 180) / 2, y + 81,
+            isUnlocked ? '已完成' : `${state.currentCount} / ${state.targetCount}`, {
+            fontFamily: 'Arial',
+            fontSize: '10px',
+            color: '#ffffff'
+          }).setOrigin(0.5);
+          this.achievementListContainer!.add(progressText);
+        }
+
+        const statusX = GAME_WIDTH - 60;
+        let statusIcon = '';
+        let statusColor = '#666666';
+
+        if (canClaim) {
+          statusIcon = '🎁';
+          statusColor = '#ffd700';
+        } else if (isClaimed) {
+          statusIcon = '✅';
+          statusColor = '#4aa85c';
+        } else if (isUnlocked) {
+          statusIcon = '🏆';
+          statusColor = '#4a8acf';
+        }
+
+        if (statusIcon) {
+          const statusText = this.add.text(statusX, y + itemHeight / 2, statusIcon, {
+            fontFamily: 'Arial',
+            fontSize: '24px',
+            color: statusColor
+          }).setOrigin(0.5);
+          this.achievementListContainer!.add(statusText);
+        }
+
+        if (canClaim) {
+          const claimZone = this.add.zone(statusX, y + itemHeight / 2, 60, 60)
+            .setInteractive({ useHandCursor: true });
+          claimZone.on('pointerup', () => {
+            const reward = SaveManager.getInstance().claimAchievementReward(config.id);
+            if (reward) {
+              this.showToast(`🎁 领取奖励：${reward.description}`);
+              this.renderAchievementList();
+              this.setupAchievementRedDot();
+            }
+          });
+          this.achievementListContainer!.add(claimZone);
+        }
+
+        if (config.reward && !isHidden) {
+          const rewardText = this.add.text(statusX, y + 15, '奖励', {
+            fontFamily: 'Arial',
+            fontSize: '10px',
+            color: '#888888'
+          }).setOrigin(0.5);
+          this.achievementListContainer!.add(rewardText);
+        }
+
+        currentY += itemHeight + spacing;
+      });
+
+    const scrollHeight = Math.max(currentY + 20, GAME_HEIGHT - 200);
+    this.achievementListContainer.setSize(GAME_WIDTH, scrollHeight);
+  }
+
+  private setupAchievementEventListeners(): void {
+    EventManager.getInstance().on('achievement:progress', () => {
+      if (this.achievementPanel) this.renderAchievementList();
+    });
+    EventManager.getInstance().on('achievement:unlocked', () => {
+      if (this.achievementPanel) this.renderAchievementList();
+      this.setupAchievementRedDot();
+    });
+    EventManager.getInstance().on('achievement:claimed', () => {
+      if (this.achievementPanel) this.renderAchievementList();
+      this.setupAchievementRedDot();
+    });
+  }
+
+  // ========== 收藏馆/图鉴系统 ==========
+
+  private openGalleryPanel(): void {
+    if (this.galleryPanel) return;
+
+    SaveManager.getInstance().markGalleryViewed();
+    this.setupGalleryRedDot();
+
+    this.galleryPanel = this.add.container(0, 0).setDepth(100);
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x0a0515, 0.97);
+    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    bg.setInteractive();
+    this.galleryPanel.add(bg);
+
+    const title = this.add.text(GAME_WIDTH / 2, 60, '📚 收藏图鉴', {
+      fontFamily: 'Arial',
+      fontSize: '32px',
+      color: '#c8a2ff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.galleryPanel.add(title);
+
+    const progress = SaveManager.getInstance().getGalleryProgress();
+    const categories = Object.values(GalleryCategory);
+    let totalItems = 0;
+    let totalDiscovered = 0;
+    categories.forEach(cat => {
+      const items = GALLERY_ITEMS.filter(i => i.category === cat);
+      totalItems += items.length;
+      totalDiscovered += items.filter(i => progress.discoveredItems.includes(i.id)).length;
+    });
+
+    const statsText = this.add.text(GAME_WIDTH / 2, 95, 
+      `已发现 ${totalDiscovered} / ${totalItems} 项 (${Math.floor(totalDiscovered / Math.max(1, totalItems) * 100)}%)`, {
+      fontFamily: 'Arial',
+      fontSize: '14px',
+      color: '#a8e6cf'
+    }).setOrigin(0.5);
+    this.galleryPanel.add(statsText);
+
+    const closeBtn = this.add.text(GAME_WIDTH - 50, 55, '✕', {
+      fontFamily: 'Arial',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerup', () => this.closeGalleryPanel());
+    this.galleryPanel.add(closeBtn);
+
+    this.createGalleryCategoryTabs();
+
+    this.galleryListContainer = this.add.container(0, 180);
+    this.galleryPanel.add(this.galleryListContainer);
+    this.renderGalleryItems();
+
+    this.galleryPanel.setAlpha(0);
+    this.tweens.add({
+      targets: this.galleryPanel,
+      alpha: 1,
+      duration: 250
+    });
+  }
+
+  private closeGalleryPanel(): void {
+    if (!this.galleryPanel) return;
+
+    this.tweens.add({
+      targets: this.galleryPanel,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        if (this.galleryPanel) {
+          this.galleryPanel.destroy();
+          this.galleryPanel = null;
+          this.galleryListContainer = null;
+          this.galleryCategoryTabs = [];
+        }
+      }
+    });
+  }
+
+  private createGalleryCategoryTabs(): void {
+    if (!this.galleryPanel) return;
+
+    const categories: { key: GalleryCategory; label: string; color: number; icon: string }[] = [
+      { key: GalleryCategory.NORMAL, label: '普通', color: 0xffb6c1, icon: GALLERY_CATEGORY_CONFIG[GalleryCategory.NORMAL].icon },
+      { key: GalleryCategory.MUTATION, label: '变异', color: 0x9370db, icon: GALLERY_CATEGORY_CONFIG[GalleryCategory.MUTATION].icon },
+      { key: GalleryCategory.FAILED, label: '失败', color: 0xa0522d, icon: GALLERY_CATEGORY_CONFIG[GalleryCategory.FAILED].icon },
+      { key: GalleryCategory.REGION, label: '区域', color: 0x228b22, icon: GALLERY_CATEGORY_CONFIG[GalleryCategory.REGION].icon },
+      { key: GalleryCategory.RECIPE, label: '配方', color: 0x8b4513, icon: GALLERY_CATEGORY_CONFIG[GalleryCategory.RECIPE].icon }
+    ];
+
+    const tabWidth = 95;
+    const tabHeight = 55;
+    const startX = 20;
+    const tabY = 125;
+    const spacing = 5;
+
+    this.galleryCategoryTabs = [];
+
+    categories.forEach((cat, index) => {
+      const tabContainer = this.add.container(0, 0);
+      const tabX = startX + index * (tabWidth + spacing);
+      const isActive = this.currentGalleryCategory === cat.key;
+
+      if (tabX + tabWidth > GAME_WIDTH - 20) return;
+
+      const tabBg = this.add.graphics();
+      tabBg.fillStyle(isActive ? cat.color : 0x1a0a2e, isActive ? 0.9 : 0.6);
+      tabBg.fillRoundedRect(tabX, tabY, tabWidth, tabHeight, 10);
+      tabBg.lineStyle(2, cat.color, isActive ? 1 : 0.4);
+      tabBg.strokeRoundedRect(tabX, tabY, tabWidth, tabHeight, 10);
+
+      const progress = SaveManager.getInstance().getGalleryProgress();
+      const catItems = GALLERY_ITEMS.filter(i => i.category === cat.key);
+      const discovered = catItems.filter(i => progress.discoveredItems.includes(i.id)).length;
+
+      const iconText = this.add.text(tabX + tabWidth / 2, tabY + 18, cat.icon, {
+        fontFamily: 'Arial',
+        fontSize: '18px'
+      }).setOrigin(0.5);
+
+      const labelText = this.add.text(tabX + tabWidth / 2, tabY + 42, 
+        `${cat.label} ${discovered}/${catItems.length}`, {
+        fontFamily: 'Arial',
+        fontSize: '10px',
+        color: isActive ? '#ffffff' : '#aaaaaa'
+      }).setOrigin(0.5);
+
+      const hitZone = this.add.zone(tabX + tabWidth / 2, tabY + tabHeight / 2, tabWidth, tabHeight)
+        .setInteractive({ useHandCursor: true });
+
+      hitZone.on('pointerup', () => {
+        this.currentGalleryCategory = cat.key;
+        this.createGalleryCategoryTabs();
+        this.renderGalleryItems();
+        AudioManager.getInstance().playSfx('sfx_click');
+      });
+
+      tabContainer.add([tabBg, iconText, labelText, hitZone]);
+      this.galleryCategoryTabs.push(tabContainer);
+      this.galleryPanel!.add(tabContainer);
+    });
+  }
+
+  private renderGalleryItems(): void {
+    if (!this.galleryListContainer) return;
+
+    this.galleryListContainer.removeAll(true);
+
+    const categoryItems = GALLERY_ITEMS.filter(i => i.category === this.currentGalleryCategory);
+    const progress = SaveManager.getInstance().getGalleryProgress();
+
+    const cols = 4;
+    const itemSize = 150;
+    const gap = 15;
+    const startX = (GAME_WIDTH - cols * itemSize - (cols - 1) * gap) / 2;
+    const startY = 10;
+
+    categoryItems.forEach((item, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = startX + col * (itemSize + gap);
+      const y = startY + row * (itemSize + gap);
+      const isDiscovered = progress.discoveredItems.includes(item.id);
+
+      const itemBg = this.add.graphics();
+      itemBg.fillStyle(isDiscovered ? 0x1a2a3a : 0x1a1a2a, isDiscovered ? 0.9 : 0.7);
+      itemBg.fillRoundedRect(x, y, itemSize, itemSize, 12);
+      itemBg.lineStyle(2, isDiscovered ? item.color : 0x333344, isDiscovered ? 0.7 : 0.4);
+      itemBg.strokeRoundedRect(x, y, itemSize, itemSize, 12);
+      this.galleryListContainer!.add(itemBg);
+
+      const iconSize = 48;
+      const iconBg = this.add.graphics();
+      iconBg.fillStyle(isDiscovered ? item.color : 0x444455, isDiscovered ? 0.25 : 0.3);
+      iconBg.fillCircle(x + itemSize / 2, y + 45, iconSize / 2 + 5);
+      this.galleryListContainer!.add(iconBg);
+
+      const iconText = this.add.text(x + itemSize / 2, y + 45, isDiscovered ? item.icon : '❓', {
+        fontFamily: 'Arial',
+        fontSize: isDiscovered ? '32px' : '28px',
+        color: isDiscovered ? '#ffffff' : '#555566'
+      }).setOrigin(0.5);
+      this.galleryListContainer!.add(iconText);
+
+      const nameText = this.add.text(x + itemSize / 2, y + 92, 
+        isDiscovered ? item.name : '???', {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: isDiscovered ? '#ffffff' : '#555566',
+        fontStyle: 'bold',
+        align: 'center',
+        wordWrap: { width: itemSize - 10 }
+      }).setOrigin(0.5);
+      this.galleryListContainer!.add(nameText);
+
+      const descText = this.add.text(x + itemSize / 2, y + 115,
+        isDiscovered ? this.truncateText(item.description, 12) : this.truncateText(item.unlockHint, 12), {
+        fontFamily: 'Arial',
+        fontSize: '9px',
+        color: isDiscovered ? '#888899' : '#444455',
+        align: 'center',
+        wordWrap: { width: itemSize - 10 }
+      }).setOrigin(0.5, 0);
+      this.galleryListContainer!.add(descText);
+
+      if (isDiscovered) {
+        const checkMark = this.add.text(x + itemSize - 15, y + 15, '✓', {
+          fontFamily: 'Arial',
+          fontSize: '14px',
+          color: '#4aa85c',
+          fontStyle: 'bold'
+        }).setOrigin(0.5);
+        this.galleryListContainer!.add(checkMark);
+      }
+    });
+
+    const rows = Math.ceil(categoryItems.length / cols);
+    const scrollHeight = Math.max(startY + rows * (itemSize + gap) + 20, GAME_HEIGHT - 200);
+    this.galleryListContainer.setSize(GAME_WIDTH, scrollHeight);
+  }
+
+  private truncateText(text: string, maxChars: number): string {
+    if (text.length <= maxChars) return text;
+    return text.substring(0, maxChars) + '...';
   }
 }

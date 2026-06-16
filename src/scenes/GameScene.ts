@@ -12,6 +12,7 @@ import { VisitorSpriteSystem } from '../modules/VisitorSpriteSystem';
 import { RegionUnlockSystem } from '../modules/RegionUnlockSystem';
 import { PetalWorkshopSystem } from '../modules/PetalWorkshopSystem';
 import { StoryChapterSystem } from '../modules/StoryChapterSystem';
+import { AchievementSystem } from '../modules/AchievementSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -30,6 +31,7 @@ export class GameScene extends Phaser.Scene {
   private regionUnlockSystem!: RegionUnlockSystem;
   private petalWorkshopSystem!: PetalWorkshopSystem;
   private storyChapterSystem!: StoryChapterSystem;
+  private achievementSystem!: AchievementSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -94,6 +96,9 @@ export class GameScene extends Phaser.Scene {
 
     this.storyChapterSystem = new StoryChapterSystem(this);
     this.storyChapterSystem.create();
+
+    this.achievementSystem = new AchievementSystem(this);
+    this.achievementSystem.create();
 
     this.synthesisSystem = new SynthesisSystem(this);
 
@@ -176,6 +181,8 @@ export class GameScene extends Phaser.Scene {
     this.playTimeTimer += delta;
     if (this.playTimeTimer >= 1000) {
       SaveManager.getInstance().updatePlayTime(1);
+      const state = SaveManager.getInstance().getGameState();
+      EventManager.getInstance().emit('playtime:update', { playTime: state.playTime });
       this.playTimeTimer = 0;
     }
 
@@ -226,6 +233,9 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.storyChapterSystem) {
       this.storyChapterSystem.destroy();
+    }
+    if (this.achievementSystem) {
+      this.achievementSystem.destroy();
     }
     if (this.sceneRenderer) {
       this.sceneRenderer.destroy();

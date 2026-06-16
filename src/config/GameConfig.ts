@@ -53,7 +53,17 @@ import {
   ChapterState,
   ChapterStatus,
   ChapterGoalType,
-  StoryProgressState
+  StoryProgressState,
+  AchievementCategory,
+  AchievementRarity,
+  AchievementConditionType,
+  AchievementCondition,
+  AchievementReward,
+  AchievementConfig,
+  AchievementState,
+  GalleryCategory,
+  GalleryItem,
+  GalleryProgress
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -1474,7 +1484,12 @@ export const INITIAL_RED_DOT_STATE: RedDotState = {
   commissionNewUnlocks: [],
   claimableCommissions: [],
   claimableCommissionChains: [],
-  lastViewedCommission: 0
+  lastViewedCommission: 0,
+  newlyUnlockedAchievements: [],
+  claimableAchievements: [],
+  lastViewedAchievements: 0,
+  lastViewedGallery: 0,
+  galleryNewUnlocks: []
 };
 
 export const INITIAL_COMMISSION_TASK_CHAINS: CollectionTaskChain[] = [
@@ -2469,7 +2484,9 @@ export const INITIAL_GAME_STATE: GameState = {
   currentRegionId: getDefaultCurrentRegionId(),
   lastRegionId: null,
   workshopState: JSON.parse(JSON.stringify(INITIAL_WORKSHOP_STATE)),
-  storyProgress: getInitialStoryProgressState()
+  storyProgress: getInitialStoryProgressState(),
+  achievementStates: getInitialAchievementStates(),
+  galleryProgress: getInitialGalleryProgress()
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -2493,7 +2510,7 @@ export const SETTINGS_STORAGE_KEY = 'dream_forest_control_settings';
 export const TUTORIAL_STORAGE_KEY = 'dream_forest_tutorial';
 export const BACKUP_STORAGE_KEY = 'dream_forest_save_backups';
 export const AUTO_BACKUP_KEY = 'dream_forest_auto_backup';
-export const SAVE_VERSION = '5.5.0';
+export const SAVE_VERSION = '5.6.0';
 
 export const MAX_BACKUP_COUNT = 10;
 export const MAX_AUTO_BACKUP_COUNT = 3;
@@ -3393,4 +3410,345 @@ export function getNextChapterId(currentChapterId: string): string | null {
   if (!current) return null;
   const next = STORY_CHAPTERS.find(c => c.order === current.order + 1);
   return next ? next.id : null;
+}
+
+export const ACHIEVEMENT_CONFIGS: AchievementConfig[] = [
+  {
+    id: 'ach_first_petal',
+    title: '初绽之美',
+    description: '收集你的第一朵花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.COMMON,
+    icon: '🌸',
+    color: 0xffb6c1,
+    conditions: [{ type: AchievementConditionType.TOTAL_COLLECTED, targetCount: 1, description: '收集1朵花瓣' }],
+    reward: { type: 'petal', petalType: PetalType.MOONLIGHT, count: 5, description: '月光花瓣 ×5' },
+    isHidden: false,
+    order: 1
+  },
+  {
+    id: 'ach_collect_100',
+    title: '百花齐放',
+    description: '累计收集100朵花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.COMMON,
+    icon: '🌷',
+    color: 0xff69b4,
+    conditions: [{ type: AchievementConditionType.TOTAL_COLLECTED, targetCount: 100, description: '收集100朵花瓣' }],
+    reward: { type: 'petal', petalType: PetalType.MOONLIGHT, count: 20, description: '月光花瓣 ×20' },
+    isHidden: false,
+    order: 2
+  },
+  {
+    id: 'ach_collect_1000',
+    title: '花海漫步',
+    description: '累计收集1000朵花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.RARE,
+    icon: '🌹',
+    color: 0xff1493,
+    conditions: [{ type: AchievementConditionType.TOTAL_COLLECTED, targetCount: 1000, description: '收集1000朵花瓣' }],
+    reward: { type: 'efficiency_boost', boostAmount: 0.1, description: '收集效率提升10%' },
+    isHidden: false,
+    order: 3
+  },
+  {
+    id: 'ach_all_normal',
+    title: '自然图鉴',
+    description: '解锁所有普通花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.RARE,
+    icon: '📗',
+    color: 0x32cd32,
+    conditions: [{ type: AchievementConditionType.ALL_NORMAL_PETALS, description: '解锁所有普通花瓣' }],
+    reward: { type: 'unlock_hint', description: '解锁所有变异花瓣的合成提示' },
+    isHidden: false,
+    order: 4
+  },
+  {
+    id: 'ach_all_mutation',
+    title: '变异大师',
+    description: '解锁所有变异花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.EPIC,
+    icon: '📘',
+    color: 0x9370db,
+    conditions: [{ type: AchievementConditionType.ALL_MUTATION_PETALS, description: '解锁所有变异花瓣' }],
+    reward: { type: 'petal', petalType: PetalType.DREAM, count: 10, description: '梦境花瓣 ×10' },
+    isHidden: false,
+    order: 5
+  },
+  {
+    id: 'ach_all_failed',
+    title: '失败收藏家',
+    description: '发现所有失败合成产物',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.RARE,
+    icon: '📙',
+    color: 0xa0522d,
+    conditions: [{ type: AchievementConditionType.ALL_FAILED_PETALS, description: '发现所有失败产物' }],
+    reward: { type: 'exclusive_title', title: '炼金术士', description: '获得专属称号：炼金术士' },
+    isHidden: false,
+    order: 6
+  },
+  {
+    id: 'ach_synthesis_50',
+    title: '炼金学徒',
+    description: '完成50次合成',
+    category: AchievementCategory.SYNTHESIS,
+    rarity: AchievementRarity.COMMON,
+    icon: '⚗️',
+    color: 0x87ceeb,
+    conditions: [{ type: AchievementConditionType.TOTAL_SYNTHESIZED, targetCount: 50, description: '完成50次合成' }],
+    reward: { type: 'petal', petalType: PetalType.GLOWING, count: 15, description: '荧光花瓣 ×15' },
+    isHidden: false,
+    order: 7
+  },
+  {
+    id: 'ach_synthesis_500',
+    title: '炼金大师',
+    description: '完成500次合成',
+    category: AchievementCategory.SYNTHESIS,
+    rarity: AchievementRarity.EPIC,
+    icon: '🔮',
+    color: 0x4169e1,
+    conditions: [{ type: AchievementConditionType.TOTAL_SYNTHESIZED, targetCount: 500, description: '完成500次合成' }],
+    reward: { type: 'efficiency_boost', boostAmount: 0.15, description: '合成效率提升15%' },
+    isHidden: false,
+    order: 8
+  },
+  {
+    id: 'ach_region_forest',
+    title: '森林漫游者',
+    description: '解锁晨露山谷',
+    category: AchievementCategory.EXPLORATION,
+    rarity: AchievementRarity.COMMON,
+    icon: '🌲',
+    color: 0x228b22,
+    conditions: [{ type: AchievementConditionType.REGION_UNLOCKED, target: 'dew_valley', description: '解锁晨露山谷' }],
+    reward: { type: 'petal', petalType: PetalType.DEW, count: 10, description: '晨露花瓣 ×10' },
+    isHidden: false,
+    order: 9
+  },
+  {
+    id: 'ach_all_regions',
+    title: '世界探险家',
+    description: '解锁所有区域',
+    category: AchievementCategory.EXPLORATION,
+    rarity: AchievementRarity.LEGENDARY,
+    icon: '🗺️',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.ALL_REGIONS_UNLOCKED, description: '解锁所有区域' }],
+    reward: { type: 'exclusive_title', title: '永恒旅者', description: '获得专属称号：永恒旅者' },
+    isHidden: false,
+    order: 10
+  },
+  {
+    id: 'ach_milestone_10min',
+    title: '梦境初探',
+    description: '游玩时间达到10分钟',
+    category: AchievementCategory.MILESTONE,
+    rarity: AchievementRarity.COMMON,
+    icon: '⏰',
+    color: 0xc0c0c0,
+    conditions: [{ type: AchievementConditionType.PLAY_TIME, targetCount: 600, description: '游玩10分钟' }],
+    reward: { type: 'petal', petalType: PetalType.DREAM, count: 3, description: '梦境花瓣 ×3' },
+    isHidden: false,
+    order: 11
+  },
+  {
+    id: 'ach_milestone_1hour',
+    title: '沉浸其中',
+    description: '游玩时间达到1小时',
+    category: AchievementCategory.MILESTONE,
+    rarity: AchievementRarity.RARE,
+    icon: '⌛',
+    color: 0xd3d3d3,
+    conditions: [{ type: AchievementConditionType.PLAY_TIME, targetCount: 3600, description: '游玩1小时' }],
+    reward: { type: 'efficiency_boost', boostAmount: 0.05, description: '收集效率提升5%' },
+    isHidden: false,
+    order: 12
+  },
+  {
+    id: 'ach_hidden_moonlight_special',
+    title: '月华之秘',
+    description: '在午夜收集一朵月光花瓣',
+    category: AchievementCategory.HIDDEN,
+    rarity: AchievementRarity.RARE,
+    icon: '🌙',
+    color: 0x191970,
+    conditions: [{ type: AchievementConditionType.SPECIAL_EVENT, target: 'midnight_moonlight', description: '午夜收集月光花瓣' }],
+    reward: { type: 'petal', petalType: PetalType.MOONLIGHT, count: 50, description: '月光花瓣 ×50' },
+    isHidden: true,
+    unlockHint: '在午夜时分（00:00-02:00）收集月光花瓣...',
+    order: 13
+  },
+  {
+    id: 'ach_hidden_perfect_day',
+    title: '完美一日',
+    description: '连续收集成功100次不失败',
+    category: AchievementCategory.HIDDEN,
+    rarity: AchievementRarity.EPIC,
+    icon: '✨',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.NO_FAILURE_STREAK, targetCount: 100, description: '连续100次无失败' }],
+    reward: { type: 'exclusive_title', title: '幸运之星', description: '获得专属称号：幸运之星' },
+    isHidden: true,
+    unlockHint: '尝试保持完美的收集记录...',
+    order: 14
+  },
+  {
+    id: 'ach_hidden_first_failure',
+    title: '失败乃成功之母',
+    description: '经历第一次合成失败',
+    category: AchievementCategory.HIDDEN,
+    rarity: AchievementRarity.COMMON,
+    icon: '💫',
+    color: 0x808080,
+    conditions: [{ type: AchievementConditionType.SPECIAL_EVENT, target: 'first_failure', description: '第一次合成失败' }],
+    isHidden: true,
+    unlockHint: '尝试一些奇怪的合成配方...',
+    order: 15
+  },
+  {
+    id: 'ach_game_complete',
+    title: '永恒之约',
+    description: '完成主线剧情，唤醒恋人',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.LEGENDARY,
+    icon: '👑',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.GAME_COMPLETED, description: '完成游戏' }],
+    reward: { type: 'exclusive_title', title: '永恒守护者', description: '获得专属称号：永恒守护者' },
+    isHidden: false,
+    order: 16
+  },
+  {
+    id: 'ach_visitor_10',
+    title: '宾客盈门',
+    description: '与访客互动10次',
+    category: AchievementCategory.SOCIAL,
+    rarity: AchievementRarity.COMMON,
+    icon: '👋',
+    color: 0x87cefa,
+    conditions: [{ type: AchievementConditionType.VISITOR_INTERACTIONS, targetCount: 10, description: '互动10次' }],
+    reward: { type: 'petal', petalType: PetalType.GLOWING, count: 10, description: '荧光花瓣 ×10' },
+    isHidden: false,
+    order: 17
+  },
+  {
+    id: 'ach_consecutive_10',
+    title: '一鼓作气',
+    description: '连续收集10朵花瓣',
+    category: AchievementCategory.COLLECTION,
+    rarity: AchievementRarity.COMMON,
+    icon: '🔗',
+    color: 0x4682b4,
+    conditions: [{ type: AchievementConditionType.CONSECUTIVE_COLLECT, targetCount: 10, description: '连续收集10朵' }],
+    reward: { type: 'petal', petalType: PetalType.DREAM, count: 5, description: '梦境花瓣 ×5' },
+    isHidden: false,
+    order: 18
+  }
+];
+
+export function getInitialAchievementStates(): AchievementState[] {
+  return ACHIEVEMENT_CONFIGS.map(config => {
+    const primaryCondition = config.conditions[0];
+    const targetCount = primaryCondition?.targetCount || 1;
+    return {
+      achievementId: config.id,
+      isUnlocked: false,
+      isClaimed: false,
+      progress: 0,
+      currentCount: 0,
+      targetCount
+    };
+  });
+}
+
+export function getAchievementConfig(id: string): AchievementConfig | undefined {
+  return ACHIEVEMENT_CONFIGS.find(a => a.id === id);
+}
+
+export const GALLERY_ITEMS: GalleryItem[] = [
+  ...Object.values(PETAL_CONFIGS)
+    .filter(p => p.category === 'normal')
+    .map(p => ({
+      id: `petal_${p.type}`,
+      category: GalleryCategory.NORMAL,
+      name: p.name,
+      description: p.description,
+      icon: '🌸',
+      color: p.color,
+      unlockHint: `在${p.regionName || '各区域'}收集此花瓣：${p.unlockHint || '探索即可发现'}`,
+      data: { petalType: p.type }
+    })),
+  ...Object.values(PETAL_CONFIGS)
+    .filter(p => p.isMutation)
+    .map(p => ({
+      id: `mutation_${p.type}`,
+      category: GalleryCategory.MUTATION,
+      name: p.name,
+      description: p.description,
+      icon: '💜',
+      color: p.color,
+      unlockHint: `通过合成发现：${p.unlockHint || '尝试多种配方组合'}`,
+      data: { petalType: p.type }
+    })),
+  ...Object.values(PETAL_CONFIGS)
+    .filter(p => p.isFailed)
+    .map(p => ({
+      id: `failed_${p.type}`,
+      category: GalleryCategory.FAILED,
+      name: p.name,
+      description: p.description,
+      icon: '💫',
+      color: p.color,
+      unlockHint: `${p.unlockHint || '在合成失败时可能发现'}`,
+      data: { petalType: p.type }
+    })),
+  ...REGION_CONFIGS.map(r => ({
+    id: `region_${r.id}`,
+    category: GalleryCategory.REGION,
+    name: r.name,
+    description: r.description,
+    icon: r.navigationIcon,
+    color: r.color,
+    unlockHint: `满足解锁条件后可进入${r.name}`,
+    data: { regionId: r.id }
+  })),
+  ...SYNTHESIS_RECIPES.map(r => {
+    const outputPetal = Object.values(PETAL_CONFIGS).find(p => p.type === r.output.type);
+    return {
+      id: `recipe_${r.id}`,
+      category: GalleryCategory.RECIPE,
+      name: outputPetal ? `${outputPetal.name}配方` : `合成配方 ${r.id.replace('recipe_', '')}`,
+      description: `使用${r.inputs.map(i => `${i.count}×${Object.values(PETAL_CONFIGS).find(p => p.type === i.type)?.name || i.type}`).join(' + ')}合成`,
+      icon: '📜',
+      color: 0x8b4513,
+      unlockHint: r.hintNormal || '在合成中发现此配方',
+      data: { recipeId: r.id }
+    };
+  })
+];
+
+export const GALLERY_CATEGORY_CONFIG = {
+  [GalleryCategory.NORMAL]: { name: '普通花瓣', icon: '🌸', color: 0xffb6c1 },
+  [GalleryCategory.MUTATION]: { name: '变异花瓣', icon: '💜', color: 0x9370db },
+  [GalleryCategory.FAILED]: { name: '失败产物', icon: '💫', color: 0xa0522d },
+  [GalleryCategory.REGION]: { name: '探索区域', icon: '🗺️', color: 0x228b22 },
+  [GalleryCategory.RECIPE]: { name: '合成配方', icon: '📜', color: 0x8b4513 },
+  [GalleryCategory.VISITOR]: { name: '神秘访客', icon: '👥', color: 0x87cefa },
+  [GalleryCategory.CHAPTER]: { name: '故事章节', icon: '📖', color: 0x8b0000 }
+};
+
+export function getInitialGalleryProgress(): GalleryProgress {
+  return {
+    discoveredItems: [],
+    lastViewedTime: 0
+  };
+}
+
+export function getGalleryItemsByCategory(category: GalleryCategory): GalleryItem[] {
+  return GALLERY_ITEMS.filter(item => item.category === category);
 }
