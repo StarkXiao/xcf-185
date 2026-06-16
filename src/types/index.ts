@@ -287,6 +287,26 @@ export enum CrisisSeverity {
   CATASTROPHIC = 'catastrophic'
 }
 
+export enum MarketRarity {
+  COMMON = 'common',
+  UNCOMMON = 'uncommon',
+  RARE = 'rare',
+  EPIC = 'epic',
+  LEGENDARY = 'legendary'
+}
+
+export enum MarketRefreshResult {
+  SUCCESS = 'success',
+  INSUFFICIENT_FUNDS = 'insufficient_funds',
+  ON_COOLDOWN = 'on_cooldown'
+}
+
+export enum MarketTransactionType {
+  BUY = 'buy',
+  SELL = 'sell',
+  REFRESH = 'refresh'
+}
+
 export enum CrisisStatus {
   DORMANT = 'dormant',
   WARNING = 'warning',
@@ -385,6 +405,82 @@ export interface ForestCrisisSystemState {
   } | null;
 }
 
+export interface MarketItem {
+  id: string;
+  petalType: PetalType;
+  rarity: MarketRarity;
+  basePrice: number;
+  currentPrice: number;
+  stock: number;
+  maxStock: number;
+  priceFluctuation: number;
+  discount: number;
+  isHot: boolean;
+  isNew: boolean;
+  restockTime: number;
+}
+
+export interface MarketTransaction {
+  id: string;
+  type: MarketTransactionType;
+  itemId?: string;
+  petalType?: PetalType;
+  quantity: number;
+  pricePerUnit: number;
+  totalPrice: number;
+  timestamp: number;
+  success: boolean;
+}
+
+export interface MarketPriceHistory {
+  petalType: PetalType;
+  prices: { timestamp: number; price: number }[];
+}
+
+export interface MarketState {
+  items: MarketItem[];
+  transactions: MarketTransaction[];
+  priceHistories: Record<PetalType, MarketPriceHistory>;
+  currency: number;
+  refreshCost: number;
+  refreshCooldown: number;
+  lastRefreshTime: number;
+  totalTrades: number;
+  totalProfit: number;
+  totalSpent: number;
+  favoritePetals: PetalType[];
+  marketLevel: number;
+  reputation: number;
+  dailyPurchaseLimit: number;
+  todayPurchases: number;
+  lastResetDay: string;
+}
+
+export interface MarketItemConfig {
+  petalType: PetalType;
+  rarity: MarketRarity;
+  basePrice: number;
+  maxStock: number;
+  spawnWeight: number;
+}
+
+export interface MarketConfig {
+  initialCurrency: number;
+  baseRefreshCost: number;
+  refreshCooldownMs: number;
+  itemSlotCount: number;
+  priceFluctuationRange: number;
+  priceUpdateIntervalMs: number;
+  autoRestockIntervalMs: number;
+  dailyPurchaseLimit: number;
+  reputationPerTrade: number;
+  maxReputation: number;
+  sellPriceRatio: number;
+  hotItemBonus: number;
+  newItemDiscount: number;
+  rarityPriceMultipliers: Record<MarketRarity, number>;
+}
+
 export interface GameState {
   playerX: number;
   playerY: number;
@@ -426,6 +522,7 @@ export interface GameState {
   achievementStates: AchievementState[];
   galleryProgress: GalleryProgress;
   forestCrisisState: ForestCrisisSystemState;
+  marketState: MarketState;
 }
 
 export interface AudioContextPreferences {
@@ -1400,4 +1497,16 @@ export interface GameEvents {
   'crisis:penalty_applied': { efficiencyPenalty: number; duration: number };
   'crisis:penalty_expired': {};
   'crisis:popup_alert': { crisisId: string; crisisName: string; icon: string; description: string; urgency: 'warning' | 'critical' };
+  'market:item_purchased': { itemId: string; petalType: PetalType; quantity: number; totalPrice: number };
+  'market:item_sold': { petalType: PetalType; quantity: number; totalPrice: number };
+  'market:refresh_success': { items: MarketItem[] };
+  'market:refresh_failed': { result: MarketRefreshResult };
+  'market:price_updated': { petalType: PetalType; oldPrice: number; newPrice: number };
+  'market:currency_updated': { oldCurrency: number; newCurrency: number };
+  'market:item_restocked': { itemId: string; petalType: PetalType; newStock: number };
+  'market:panel_opened': {};
+  'market:reputation_updated': { oldReputation: number; newReputation: number };
+  'market:level_up': { oldLevel: number; newLevel: number };
+  'market:daily_limit_reached': {};
+  'market:hot_item_appeared': { itemId: string; petalType: PetalType };
 }

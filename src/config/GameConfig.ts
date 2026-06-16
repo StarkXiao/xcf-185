@@ -67,7 +67,13 @@ import {
   CrisisType,
   CrisisSeverity,
   ForestCrisisConfig,
-  ForestCrisisSystemState
+  ForestCrisisSystemState,
+  MarketConfig,
+  MarketItemConfig,
+  MarketRarity,
+  MarketState,
+  MarketItem,
+  MarketPriceHistory
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -2491,7 +2497,8 @@ export const INITIAL_GAME_STATE: GameState = {
   storyProgress: getInitialStoryProgressState(),
   achievementStates: getInitialAchievementStates(),
   galleryProgress: getInitialGalleryProgress(),
-  forestCrisisState: getInitialForestCrisisState()
+  forestCrisisState: getInitialForestCrisisState(),
+  marketState: getInitialMarketState()
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -3942,4 +3949,118 @@ export function getInitialForestCrisisState(): ForestCrisisSystemState {
 
 export function getGalleryItemsByCategory(category: GalleryCategory): GalleryItem[] {
   return GALLERY_ITEMS.filter(item => item.category === category);
+}
+
+export const MARKET_CONFIG: MarketConfig = {
+  initialCurrency: 100,
+  baseRefreshCost: 20,
+  refreshCooldownMs: 30000,
+  itemSlotCount: 8,
+  priceFluctuationRange: 0.3,
+  priceUpdateIntervalMs: 60000,
+  autoRestockIntervalMs: 120000,
+  dailyPurchaseLimit: 20,
+  reputationPerTrade: 5,
+  maxReputation: 1000,
+  sellPriceRatio: 0.7,
+  hotItemBonus: 0.2,
+  newItemDiscount: 0.15,
+  rarityPriceMultipliers: {
+    [MarketRarity.COMMON]: 1.0,
+    [MarketRarity.UNCOMMON]: 1.5,
+    [MarketRarity.RARE]: 2.5,
+    [MarketRarity.EPIC]: 4.0,
+    [MarketRarity.LEGENDARY]: 8.0
+  }
+};
+
+export const MARKET_ITEM_CONFIGS: MarketItemConfig[] = [
+  { petalType: PetalType.MOONLIGHT, rarity: MarketRarity.COMMON, basePrice: 10, maxStock: 10, spawnWeight: 30 },
+  { petalType: PetalType.STARLIGHT, rarity: MarketRarity.UNCOMMON, basePrice: 25, maxStock: 8, spawnWeight: 25 },
+  { petalType: PetalType.DEW, rarity: MarketRarity.UNCOMMON, basePrice: 40, maxStock: 6, spawnWeight: 20 },
+  { petalType: PetalType.GLOWING, rarity: MarketRarity.RARE, basePrice: 80, maxStock: 5, spawnWeight: 15 },
+  { petalType: PetalType.DREAM, rarity: MarketRarity.RARE, basePrice: 150, maxStock: 3, spawnWeight: 10 },
+  { petalType: PetalType.ETERNAL, rarity: MarketRarity.EPIC, basePrice: 300, maxStock: 2, spawnWeight: 5 },
+  { petalType: PetalType.WAKEUP, rarity: MarketRarity.LEGENDARY, basePrice: 800, maxStock: 1, spawnWeight: 1 },
+  { petalType: PetalType.MOONLIGHT_SHIMMER, rarity: MarketRarity.RARE, basePrice: 120, maxStock: 3, spawnWeight: 8 },
+  { petalType: PetalType.STARLIGHT_BURST, rarity: MarketRarity.RARE, basePrice: 180, maxStock: 3, spawnWeight: 7 },
+  { petalType: PetalType.DEW_CRYSTAL, rarity: MarketRarity.EPIC, basePrice: 280, maxStock: 2, spawnWeight: 4 },
+  { petalType: PetalType.GLOWING_EMBER, rarity: MarketRarity.EPIC, basePrice: 350, maxStock: 2, spawnWeight: 3 },
+  { petalType: PetalType.DREAM_PHANTOM, rarity: MarketRarity.LEGENDARY, basePrice: 600, maxStock: 1, spawnWeight: 2 },
+  { petalType: PetalType.FAILED_DUST, rarity: MarketRarity.COMMON, basePrice: 5, maxStock: 15, spawnWeight: 20 },
+  { petalType: PetalType.FAILED_SLIME, rarity: MarketRarity.COMMON, basePrice: 8, maxStock: 12, spawnWeight: 15 },
+  { petalType: PetalType.FAILED_ASH, rarity: MarketRarity.COMMON, basePrice: 6, maxStock: 15, spawnWeight: 18 }
+];
+
+export function getInitialMarketState(): MarketState {
+  const priceHistories = {} as Record<PetalType, MarketPriceHistory>;
+  Object.values(PetalType).forEach(type => {
+    priceHistories[type] = {
+      petalType: type,
+      prices: []
+    };
+  });
+
+  return {
+    items: generateInitialMarketItems(),
+    transactions: [],
+    priceHistories,
+    currency: MARKET_CONFIG.initialCurrency,
+    refreshCost: MARKET_CONFIG.baseRefreshCost,
+    refreshCooldown: MARKET_CONFIG.refreshCooldownMs,
+    lastRefreshTime: 0,
+    totalTrades: 0,
+    totalProfit: 0,
+    totalSpent: 0,
+    favoritePetals: [],
+    marketLevel: 1,
+    reputation: 0,
+    dailyPurchaseLimit: MARKET_CONFIG.dailyPurchaseLimit,
+    todayPurchases: 0,
+    lastResetDay: new Date().toDateString()
+  };
+}
+
+function generateInitialMarketItems(): MarketItem[] {
+  const items: MarketItem[] = [];
+  const availableConfigs = [...MARKET_ITEM_CONFIGS];
+  
+  for (let i = 0; i < MARKET_CONFIG.itemSlotCount && availableConfigs.length > 0; i++) {
+    const totalWeight = availableConfigs.reduce((sum, config) => sum + config.spawnWeight, 0);
+    let random = Math.random() * totalWeight;
+    
+    let selectedIndex = 0;
+    for (let j = 0; j < availableConfigs.length; j++) {
+      random -= availableConfigs[j].spawnWeight;
+      if (random <= 0) {
+        selectedIndex = j;
+        break;
+      }
+    }
+    
+    const config = availableConfigs[selectedIndex];
+    const rarityMultiplier = MARKET_CONFIG.rarityPriceMultipliers[config.rarity];
+    const fluctuation = 1 + (Math.random() * 2 - 1) * MARKET_CONFIG.priceFluctuationRange;
+    const basePrice = Math.round(config.basePrice * rarityMultiplier);
+    
+    const item: MarketItem = {
+      id: `market_item_${Date.now()}_${i}`,
+      petalType: config.petalType,
+      rarity: config.rarity,
+      basePrice,
+      currentPrice: Math.round(basePrice * fluctuation),
+      stock: Math.min(config.maxStock, Math.floor(Math.random() * config.maxStock) + 1),
+      maxStock: config.maxStock,
+      priceFluctuation: fluctuation,
+      discount: Math.random() < 0.1 ? MARKET_CONFIG.newItemDiscount : 0,
+      isHot: Math.random() < 0.15,
+      isNew: true,
+      restockTime: 0
+    };
+    
+    items.push(item);
+    availableConfigs.splice(selectedIndex, 1);
+  }
+  
+  return items;
 }

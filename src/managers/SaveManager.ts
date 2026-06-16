@@ -38,7 +38,12 @@ import {
   AchievementReward,
   GalleryCategory,
   GalleryProgress,
-  ForestCrisisSystemState
+  ForestCrisisSystemState,
+  MarketState,
+  MarketItem,
+  MarketRarity,
+  MarketPriceHistory,
+  MarketConfig
 } from '../types';
 import { 
   STORAGE_KEY as SAVE_KEY, 
@@ -86,7 +91,8 @@ import {
   getInitialGalleryProgress,
   getAchievementConfig,
   ACHIEVEMENT_CONFIGS,
-  getInitialForestCrisisState
+  getInitialForestCrisisState,
+  getInitialMarketState
 } from '../config/GameConfig';
 import { EventManager } from './EventManager';
 
@@ -132,6 +138,7 @@ export class SaveManager {
     this.migrationMap.set('5.4.0', this.migrateFrom5_4_0.bind(this));
     this.migrationMap.set('5.5.0', this.migrateFrom5_5_0.bind(this));
     this.migrationMap.set('5.6.0', this.migrateFrom5_6_0.bind(this));
+    this.migrationMap.set('5.7.0', this.migrateFrom5_7_0.bind(this));
   }
 
   private getVersionOrder(): string[] {
@@ -272,7 +279,8 @@ export class SaveManager {
         storyProgress: oldState.storyProgress || getInitialStoryProgressState(),
         achievementStates: oldState.achievementStates || getInitialAchievementStates(),
         galleryProgress: oldState.galleryProgress || getInitialGalleryProgress(),
-        forestCrisisState: oldState.forestCrisisState || getInitialForestCrisisState()
+        forestCrisisState: oldState.forestCrisisState || getInitialForestCrisisState(),
+        marketState: oldState.marketState || getInitialMarketState()
       }
     };
   }
@@ -678,6 +686,36 @@ export class SaveManager {
           if (typeof crisis.activePenalty.remainingDuration !== 'number') crisis.activePenalty.remainingDuration = 0;
         }
         crisis.activeCrises = crisis.activeCrises.filter((c: any) => c.status !== 'dormant');
+      }
+    }
+    return { data: saveData, warnings };
+  }
+
+  private migrateFrom5_7_0(saveData: any): { data: any; warnings: string[] } {
+    const warnings: string[] = [];
+    if (saveData.gameState) {
+      if (!saveData.gameState.marketState) {
+        saveData.gameState.marketState = getInitialMarketState();
+        warnings.push('新增交易集市系统状态已设为默认值');
+      } else {
+        const initial = getInitialMarketState();
+        const market = saveData.gameState.marketState;
+        if (typeof market.currency !== 'number') market.currency = initial.currency;
+        if (!Array.isArray(market.items)) market.items = initial.items;
+        if (typeof market.lastRefreshTime !== 'number') market.lastRefreshTime = initial.lastRefreshTime;
+        if (typeof market.refreshCost !== 'number') market.refreshCost = initial.refreshCost;
+        if (typeof market.refreshCooldown !== 'number') market.refreshCooldown = initial.refreshCooldown;
+        if (typeof market.reputation !== 'number') market.reputation = initial.reputation;
+        if (typeof market.marketLevel !== 'number') market.marketLevel = initial.marketLevel;
+        if (typeof market.todayPurchases !== 'number') market.todayPurchases = initial.todayPurchases;
+        if (typeof market.lastResetDay !== 'string') market.lastResetDay = initial.lastResetDay;
+        if (!Array.isArray(market.favoritePetals)) market.favoritePetals = [];
+        if (!Array.isArray(market.transactions)) market.transactions = [];
+        if (typeof market.priceHistories !== 'object') market.priceHistories = initial.priceHistories;
+        if (typeof market.totalTrades !== 'number') market.totalTrades = initial.totalTrades;
+        if (typeof market.totalSpent !== 'number') market.totalSpent = initial.totalSpent;
+        if (typeof market.totalProfit !== 'number') market.totalProfit = initial.totalProfit;
+        if (typeof market.dailyPurchaseLimit !== 'number') market.dailyPurchaseLimit = initial.dailyPurchaseLimit;
       }
     }
     return { data: saveData, warnings };
