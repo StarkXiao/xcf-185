@@ -14,6 +14,7 @@ import { PetalWorkshopSystem } from '../modules/PetalWorkshopSystem';
 import { StoryChapterSystem } from '../modules/StoryChapterSystem';
 import { AchievementSystem } from '../modules/AchievementSystem';
 import { ForestCrisisSystem } from '../modules/ForestCrisisSystem';
+import { EndingAwakeningSystem } from '../modules/EndingAwakeningSystem';
 import { AudioManager } from '../managers/AudioManager';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
@@ -34,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private storyChapterSystem!: StoryChapterSystem;
   private achievementSystem!: AchievementSystem;
   private forestCrisisSystem!: ForestCrisisSystem;
+  private endingAwakeningSystem!: EndingAwakeningSystem;
   private saveTimer: number = 0;
   private playTimeTimer: number = 0;
   private trendTimer: number = 0;
@@ -105,6 +107,9 @@ export class GameScene extends Phaser.Scene {
     this.forestCrisisSystem = new ForestCrisisSystem(this);
     this.forestCrisisSystem.create();
 
+    this.endingAwakeningSystem = new EndingAwakeningSystem(this);
+    this.endingAwakeningSystem.create();
+
     this.synthesisSystem = new SynthesisSystem(this);
 
     this.uiManager = new UIManager(this, this.synthesisSystem, this.visitorSpriteSystem, this.regionUnlockSystem, this.petalWorkshopSystem);
@@ -116,6 +121,7 @@ export class GameScene extends Phaser.Scene {
     (this as any).player = this.player;
     (this as any).regionUnlockSystem = this.regionUnlockSystem;
     (this as any).storyChapterSystem = this.storyChapterSystem;
+    (this as any).endingAwakeningSystem = this.endingAwakeningSystem;
 
     this.setupRegionEventListeners();
 

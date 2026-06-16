@@ -73,7 +73,11 @@ import {
   MarketRarity,
   MarketState,
   MarketItem,
-  MarketPriceHistory
+  MarketPriceHistory,
+  EndingType,
+  EndingRarity,
+  EndingConfig,
+  EndingAwakeningState
 } from '../types';
 
 export const GAME_WIDTH = 750;
@@ -2498,7 +2502,8 @@ export const INITIAL_GAME_STATE: GameState = {
   achievementStates: getInitialAchievementStates(),
   galleryProgress: getInitialGalleryProgress(),
   forestCrisisState: getInitialForestCrisisState(),
-  marketState: getInitialMarketState()
+  marketState: getInitialMarketState(),
+  endingAwakeningState: getInitialEndingAwakeningState()
 };
 
 export const INITIAL_TUTORIAL_STATE = {
@@ -3660,6 +3665,97 @@ export const ACHIEVEMENT_CONFIGS: AchievementConfig[] = [
     reward: { type: 'petal', petalType: PetalType.DREAM, count: 5, description: '梦境花瓣 ×5' },
     isHidden: false,
     order: 18
+  },
+  {
+    id: 'ach_first_ending',
+    title: '初见结局',
+    description: '解锁你的第一个结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.COMMON,
+    icon: '🎭',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.ENDING_UNLOCKED, targetCount: 1, description: '解锁1个结局' }],
+    reward: { type: 'petal', petalType: PetalType.MOONLIGHT, count: 20, description: '月光花瓣 ×20' },
+    isHidden: false,
+    order: 19
+  },
+  {
+    id: 'ach_half_endings',
+    title: '探索者',
+    description: '解锁半数以上的结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.RARE,
+    icon: '📚',
+    color: 0x88ccff,
+    conditions: [{ type: AchievementConditionType.ENDING_UNLOCKED, targetCount: 4, description: '解锁4个结局' }],
+    reward: { type: 'petal', petalType: PetalType.DREAM, count: 15, description: '梦境花瓣 ×15' },
+    isHidden: false,
+    order: 20
+  },
+  {
+    id: 'ach_all_endings',
+    title: '全结局收集',
+    description: '解锁所有8个结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.LEGENDARY,
+    icon: '👑',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.ALL_ENDINGS, description: '解锁所有结局' }],
+    reward: { type: 'exclusive_title', title: '梦境编织者', description: '获得专属称号：梦境编织者' },
+    isHidden: false,
+    order: 21
+  },
+  {
+    id: 'ach_legendary_ending',
+    title: '传说见证者',
+    description: '达成一个传说级结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.EPIC,
+    icon: '⭐',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.LEGENDARY_ENDING, targetCount: 1, description: '达成1个传说结局' }],
+    reward: { type: 'petal', petalType: PetalType.WAKEUP, count: 1, description: '唤醒花瓣 ×1' },
+    isHidden: false,
+    order: 22
+  },
+  {
+    id: 'ach_all_legendary_endings',
+    title: '传说收集者',
+    description: '达成所有传说级结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.LEGENDARY,
+    icon: '🌟',
+    color: 0xffd700,
+    conditions: [{ type: AchievementConditionType.LEGENDARY_ENDING, targetCount: 3, description: '达成所有传说结局' }],
+    reward: { type: 'exclusive_title', title: '传说守护者', description: '获得专属称号：传说守护者' },
+    isHidden: false,
+    order: 23
+  },
+  {
+    id: 'ach_perfect_ending',
+    title: '完美奇迹',
+    description: '达成奇迹重逢结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.LEGENDARY,
+    icon: '🌈',
+    color: 0x00ffaa,
+    conditions: [{ type: AchievementConditionType.ENDING_VIEWED, target: EndingType.MIRACLE_REUNION, description: '达成奇迹重逢结局' }],
+    reward: { type: 'efficiency_boost', boostAmount: 0.2, description: '永久收集效率提升20%' },
+    isHidden: true,
+    order: 24
+  },
+  {
+    id: 'ach_forbidden_ending',
+    title: '禁忌行者',
+    description: '达成禁忌之路结局',
+    category: AchievementCategory.STORY,
+    rarity: AchievementRarity.EPIC,
+    icon: '🖤',
+    color: 0x8800ff,
+    conditions: [{ type: AchievementConditionType.ENDING_VIEWED, target: EndingType.FORBIDDEN_PATH, description: '达成禁忌之路结局' }],
+    reward: { type: 'unlock_hint', description: '解锁所有变异花瓣的合成提示' },
+    isHidden: true,
+    order: 25
   }
 ];
 
@@ -3682,7 +3778,7 @@ export function getAchievementConfig(id: string): AchievementConfig | undefined 
   return ACHIEVEMENT_CONFIGS.find(a => a.id === id);
 }
 
-export const GALLERY_ITEMS: GalleryItem[] = [
+const BASE_GALLERY_ITEMS: GalleryItem[] = [
   ...Object.values(PETAL_CONFIGS)
     .filter(p => p.category === 'normal')
     .map(p => ({
@@ -3751,7 +3847,8 @@ export const GALLERY_CATEGORY_CONFIG = {
   [GalleryCategory.REGION]: { name: '探索区域', icon: '🗺️', color: 0x228b22 },
   [GalleryCategory.RECIPE]: { name: '合成配方', icon: '📜', color: 0x8b4513 },
   [GalleryCategory.VISITOR]: { name: '神秘访客', icon: '👥', color: 0x87cefa },
-  [GalleryCategory.CHAPTER]: { name: '故事章节', icon: '📖', color: 0x8b0000 }
+  [GalleryCategory.CHAPTER]: { name: '故事章节', icon: '📖', color: 0x8b0000 },
+  [GalleryCategory.ENDING]: { name: '结局图鉴', icon: '🎭', color: 0xffd700 }
 };
 
 export function getInitialGalleryProgress(): GalleryProgress {
@@ -4064,3 +4161,389 @@ function generateInitialMarketItems(): MarketItem[] {
   
   return items;
 }
+
+export const ENDING_CONFIGS: EndingConfig[] = [
+  {
+    id: EndingType.DAWN_AWAKENING,
+    title: '黎明觉醒',
+    subtitle: '万物苏醒，晨曦降临',
+    description: '你收集了所有花瓣的力量，完成了每一段旅程。恋人在黎明的光辉中缓缓睁眼，微笑着向你伸出双手。',
+    rarity: EndingRarity.LEGENDARY,
+    icon: '🌅',
+    color: 0xffd700,
+    priority: 1,
+    conditions: [
+      { type: 'chapter_completed', targetCount: 6, description: '完成全部6章剧情', weight: 30 },
+      { type: 'mutation_discovered', targetCount: 5, description: '发现全部5种变异花瓣', weight: 25 },
+      { type: 'collection_completion', targetCount: 100, description: '收集完成度达到100%', weight: 20 },
+      { type: 'region_explored', targetCount: 6, description: '探索全部6个区域', weight: 15 },
+      { type: 'synthesis_success_rate', targetCount: 80, description: '合成成功率达到80%', weight: 10 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '是你...一直在呼唤我吗？', expression: 'surprised', delay: 1500 },
+      { speaker: '恋人', text: '我听见了，穿越无尽梦境的声音。', expression: 'happy', delay: 2000 },
+      { speaker: '恋人', text: '每一朵花瓣的绽放，都是你在寻找我的证明。', expression: 'serene', delay: 2000 },
+      { speaker: '恋人', text: '谢谢你，没有放弃我。现在，让我们一同迎接黎明。', expression: 'happy', delay: 2500 }
+    ],
+    animation: {
+      backgroundColor: 0x1a0a2e,
+      particleColors: [0xffd700, 0xffffff, 0xff8c00, 0xffaa00, 0xa8e6cf],
+      flashColor: { r: 255, g: 215, b: 0 },
+      flashDuration: 2000,
+      cameraShake: { duration: 500, intensity: 0.008 },
+      titleColor: '#ffd700',
+      subtitleColor: '#ffffff',
+      glowColor: 0xffd700,
+      petalDisplayScale: 1.5,
+      particleCount: 80,
+      particleSpeed: { min: 80, max: 250 },
+      specialEffect: 'radiance'
+    },
+    settlementBonus: {
+      scoreMultiplier: 1.5,
+      extraPoints: 500,
+      title: '黎明守望者',
+      description: '完成所有目标，达成完美结局，总分×1.5并额外获得500分'
+    },
+    unlockHint: '完成全部章节、发现所有变异、全收集、全区域探索、高合成成功率'
+  },
+  {
+    id: EndingType.MOONLIT_REUNION,
+    title: '月光重逢',
+    subtitle: '银色月华下的再会',
+    description: '月光花瓣的指引贯穿了你的旅途。恋人在月光中醒来，眼角带着晶莹的泪光。',
+    rarity: EndingRarity.EPIC,
+    icon: '🌙',
+    color: 0x88ccff,
+    priority: 2,
+    conditions: [
+      { type: 'synthesis_path', target: 'recipe_1', description: '以月光合成路线为主', weight: 30 },
+      { type: 'chapter_completed', targetCount: 4, description: '完成至少4章剧情', weight: 25 },
+      { type: 'collection_completion', targetCount: 70, description: '收集完成度达到70%', weight: 20 },
+      { type: 'visitor_affection', target: 'luna', targetCount: 3, description: '月光精灵好感达到好友以上', weight: 25 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '月光...好温柔。', expression: 'serene', delay: 1500 },
+      { speaker: '恋人', text: '我在梦中一直追随着那道银光，原来是你。', expression: 'happy', delay: 2000 },
+      { speaker: '恋人', text: '谢谢你用月光为我照亮了归途。', expression: 'happy', delay: 2500 }
+    ],
+    animation: {
+      backgroundColor: 0x0a0a2e,
+      particleColors: [0x88ccff, 0x4488ff, 0xaaddff, 0xffffff],
+      flashColor: { r: 136, g: 204, b: 255 },
+      flashDuration: 1500,
+      cameraShake: { duration: 300, intensity: 0.005 },
+      titleColor: '#88ccff',
+      subtitleColor: '#aaddff',
+      glowColor: 0x4488ff,
+      petalDisplayScale: 1.3,
+      particleCount: 60,
+      particleSpeed: { min: 50, max: 180 },
+      specialEffect: 'moonbeam'
+    },
+    settlementBonus: {
+      scoreMultiplier: 1.3,
+      extraPoints: 300,
+      title: '月华守望者',
+      description: '月华之路指引重逢，总分×1.3并额外获得300分'
+    },
+    unlockHint: '以月光合成路线为主，完成大部分章节，月光精灵高好感'
+  },
+  {
+    id: EndingType.ETERNAL_SLUMBER,
+    title: '永恒沉睡',
+    subtitle: '不愿醒来的美梦',
+    description: '梦境的力量太过迷人，恋人在永恒的花海中安详沉睡。你选择守候在旁，等待下一个黎明。',
+    rarity: EndingRarity.RARE,
+    icon: '💫',
+    color: 0xc8a2ff,
+    priority: 3,
+    conditions: [
+      { type: 'collection_completion', targetCount: 50, description: '收集完成度达到50%', weight: 25 },
+      { type: 'synthesis_path', target: 'recipe_5', description: '频繁合成梦境花瓣', weight: 25 },
+      { type: 'failure_ratio', targetCount: 25, description: '合成失败率超过25%', weight: 25 },
+      { type: 'chapter_completed', targetCount: 3, description: '完成不足一半章节', weight: 25 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '...好温暖...', expression: 'serene', delay: 2000 },
+      { speaker: '旁白', text: '恋人在永恒的花海中，露出了安详的微笑。', expression: 'melancholy', delay: 2500 },
+      { speaker: '旁白', text: '也许...再等一个轮回就好。', expression: 'determined', delay: 3000 }
+    ],
+    animation: {
+      backgroundColor: 0x150a2a,
+      particleColors: [0xc8a2ff, 0x9966ff, 0xddbbff, 0x8855dd],
+      flashColor: { r: 200, g: 162, b: 255 },
+      flashDuration: 1200,
+      cameraShake: { duration: 200, intensity: 0.003 },
+      titleColor: '#c8a2ff',
+      subtitleColor: '#ddbbff',
+      glowColor: 0x9966ff,
+      petalDisplayScale: 1.0,
+      particleCount: 40,
+      particleSpeed: { min: 30, max: 120 },
+      specialEffect: 'phantom'
+    },
+    settlementBonus: {
+      scoreMultiplier: 1.0,
+      extraPoints: 100,
+      title: '梦境守望者',
+      description: '梦虽未醒，守候不灭，总分×1.0并额外获得100分'
+    },
+    unlockHint: '中等完成度，偏向梦境路线，合成失败率较高'
+  },
+  {
+    id: EndingType.DREAM_ECHO,
+    title: '梦境回响',
+    subtitle: '跨越梦与现实的呼唤',
+    description: '变异花瓣蕴含的未知力量共鸣了时空。恋人的身影在幻梦与现实间闪烁，化作永恒的回响。',
+    rarity: EndingRarity.EPIC,
+    icon: '✨',
+    color: 0xff9ecb,
+    priority: 2,
+    conditions: [
+      { type: 'mutation_discovered', targetCount: 5, description: '发现全部5种变异花瓣', weight: 35 },
+      { type: 'visitor_affection', target: 'aurora', targetCount: 4, description: '奥罗拉好感达到密友以上', weight: 20 },
+      { type: 'collection_completion', targetCount: 80, description: '收集完成度达到80%', weight: 20 },
+      { type: 'synthesis_path', target: 'recipe_11', description: '解锁变异合成配方', weight: 25 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '...你能听见我吗？', expression: 'surprised', delay: 1500 },
+      { speaker: '恋人', text: '我在梦的尽头，看见了变异的花朵绽放。', expression: 'serene', delay: 2000 },
+      { speaker: '恋人', text: '每一次变异，都是命运在向我们招手。', expression: 'happy', delay: 2500 },
+      { speaker: '恋人', text: '我会化作回响，永远陪伴在你身边。', expression: 'determined', delay: 3000 }
+    ],
+    animation: {
+      backgroundColor: 0x1a0a1a,
+      particleColors: [0xff9ecb, 0xff66aa, 0xffccdd, 0xffaa00, 0xc8a2ff],
+      flashColor: { r: 255, g: 158, b: 203 },
+      flashDuration: 1800,
+      cameraShake: { duration: 400, intensity: 0.007 },
+      titleColor: '#ff9ecb',
+      subtitleColor: '#ffccdd',
+      glowColor: 0xff66aa,
+      petalDisplayScale: 1.4,
+      particleCount: 70,
+      particleSpeed: { min: 60, max: 220 },
+      specialEffect: 'phantom'
+    },
+    settlementBonus: {
+      scoreMultiplier: 1.4,
+      extraPoints: 400,
+      title: '幻梦守望者',
+      description: '变异之力连通梦与现实，总分×1.4并额外获得400分'
+    },
+    unlockHint: '发现所有变异花瓣，高收集度，解锁变异配方，奥罗拉高好感'
+  },
+  {
+    id: EndingType.FADING_LIGHT,
+    title: '微光消逝',
+    subtitle: '未能抵达的彼岸',
+    description: '微弱的光芒在风中摇曳，最终缓缓熄灭。你伸出的手，终究没有触到那份温暖。',
+    rarity: EndingRarity.COMMON,
+    icon: '🕊️',
+    color: 0x888888,
+    priority: 4,
+    conditions: [
+      { type: 'failure_ratio', targetCount: 40, description: '合成失败率超过40%', weight: 30 },
+      { type: 'collection_completion', targetCount: 30, description: '收集完成度低于30%', weight: 25 },
+      { type: 'chapter_completed', targetCount: 2, description: '完成不足2章剧情', weight: 25 },
+      { type: 'synthesis_success_rate', targetCount: 50, description: '合成成功率低于50%', weight: 20 }
+    ],
+    dialogues: [
+      { speaker: '旁白', text: '花瓣一片片凋零...', expression: 'melancholy', delay: 2000 },
+      { speaker: '旁白', text: '你听见远方传来微弱的叹息。', expression: 'sad', delay: 2500 },
+      { speaker: '旁白', text: '但梦不会真正终结。下一次，一定要找到那条路。', expression: 'determined', delay: 3000 }
+    ],
+    animation: {
+      backgroundColor: 0x0a0a0a,
+      particleColors: [0x888888, 0x666666, 0x554433, 0x444444],
+      flashColor: { r: 100, g: 100, b: 100 },
+      flashDuration: 800,
+      cameraShake: { duration: 100, intensity: 0.002 },
+      titleColor: '#888888',
+      subtitleColor: '#666666',
+      glowColor: 0x666666,
+      petalDisplayScale: 0.8,
+      particleCount: 20,
+      particleSpeed: { min: 20, max: 80 },
+      specialEffect: 'ember'
+    },
+    settlementBonus: {
+      scoreMultiplier: 0.8,
+      extraPoints: 0,
+      title: '余烬守望者',
+      description: '微光虽逝，余烬尚存，总分×0.8'
+    },
+    unlockHint: '低完成度，高失败率，章节完成较少'
+  },
+  {
+    id: EndingType.TRUE_LOVE,
+    title: '真爱永恒',
+    subtitle: '跨越轮回的爱恋',
+    description: '你用真心打动了每一个人，用爱温暖了整个梦境森林。当恋人睁开双眼的那一刻，你们的灵魂早已紧紧相连，永不分离。',
+    rarity: EndingRarity.LEGENDARY,
+    icon: '💖',
+    color: 0xff6b9d,
+    priority: 0,
+    conditions: [
+      { type: 'chapter_completed', targetCount: 6, description: '完成全部6章剧情', weight: 25 },
+      { type: 'collection_completion', targetCount: 100, description: '收集完成度达到100%', weight: 20 },
+      { type: 'mutation_discovered', targetCount: 5, description: '发现全部5种变异花瓣', weight: 20 },
+      { type: 'region_explored', targetCount: 6, description: '探索全部6个区域', weight: 15 },
+      { type: 'visitor_affection', target: 'luna', targetCount: 5, description: '月光精灵好感达到灵魂伴侣', weight: 10 },
+      { type: 'visitor_affection', target: 'aurora', targetCount: 5, description: '奥罗拉好感达到灵魂伴侣', weight: 10 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '我感受到了...这份温暖，是爱。', expression: 'happy', delay: 1500 },
+      { speaker: '恋人', text: '穿越无尽的梦境，我一直在寻找你的声音。', expression: 'serene', delay: 2000 },
+      { speaker: '恋人', text: '原来你一直都在，从未离开。', expression: 'happy', delay: 2000 },
+      { speaker: '恋人', text: '这一次，我们再也不会分开了。', expression: 'determined', delay: 2500 }
+    ],
+    animation: {
+      backgroundColor: 0x2e0a1a,
+      particleColors: [0xff6b9d, 0xff88bb, 0xffccdd, 0xffd700, 0xffffff],
+      flashColor: { r: 255, g: 107, b: 157 },
+      flashDuration: 2500,
+      cameraShake: { duration: 800, intensity: 0.01 },
+      titleColor: '#ff6b9d',
+      subtitleColor: '#ffccdd',
+      glowColor: 0xff6b9d,
+      petalDisplayScale: 1.6,
+      particleCount: 100,
+      particleSpeed: { min: 100, max: 300 },
+      specialEffect: 'radiance'
+    },
+    settlementBonus: {
+      scoreMultiplier: 2.0,
+      extraPoints: 1000,
+      title: '永恒挚爱',
+      description: '用真爱唤醒奇迹，总分×2.0并额外获得1000分'
+    },
+    unlockHint: '完成全部章节、全收集、全变异、全区域探索、所有访客精灵达到灵魂伴侣'
+  },
+  {
+    id: EndingType.MIRACLE_REUNION,
+    title: '奇迹重逢',
+    subtitle: '梦境与现实的交汇',
+    description: '你不仅唤醒了恋人，还治愈了梦境森林的创伤。花瓣重新绽放，生机回归大地。你们的故事，将成为永恒的传说，在每个梦中回响。',
+    rarity: EndingRarity.LEGENDARY,
+    icon: '🌟',
+    color: 0x00ffaa,
+    priority: 0,
+    conditions: [
+      { type: 'chapter_completed', targetCount: 6, description: '完成全部6章剧情', weight: 20 },
+      { type: 'collection_completion', targetCount: 100, description: '收集完成度达到100%', weight: 20 },
+      { type: 'mutation_discovered', targetCount: 5, description: '发现全部5种变异花瓣', weight: 20 },
+      { type: 'region_explored', targetCount: 6, description: '探索全部6个区域', weight: 15 },
+      { type: 'synthesis_success_rate', targetCount: 95, description: '合成成功率达到95%', weight: 15 },
+      { type: 'failure_ratio', targetCount: 5, comparator: 'lte', description: '合成失败率低于5%', weight: 10 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '这是...奇迹吗？', expression: 'surprised', delay: 1500 },
+      { speaker: '恋人', text: '我感受到森林在呼吸，花瓣在歌唱。', expression: 'happy', delay: 2000 },
+      { speaker: '恋人', text: '你做到了...不仅唤醒了我，还拯救了整个梦境。', expression: 'serene', delay: 2000 },
+      { speaker: '恋人', text: '我们的故事，会永远流传下去。', expression: 'determined', delay: 2500 }
+    ],
+    animation: {
+      backgroundColor: 0x0a2e1a,
+      particleColors: [0x00ffaa, 0x00ff88, 0xa8e6cf, 0xffd700, 0xffffff],
+      flashColor: { r: 0, g: 255, b: 170 },
+      flashDuration: 3000,
+      cameraShake: { duration: 1000, intensity: 0.012 },
+      titleColor: '#00ffaa',
+      subtitleColor: '#a8e6cf',
+      glowColor: 0x00ffaa,
+      petalDisplayScale: 1.8,
+      particleCount: 120,
+      particleSpeed: { min: 120, max: 350 },
+      specialEffect: 'radiance'
+    },
+    settlementBonus: {
+      scoreMultiplier: 2.5,
+      extraPoints: 2000,
+      title: '奇迹创造者',
+      description: '创造不可能的奇迹，总分×2.5并额外获得2000分'
+    },
+    unlockHint: '完美通关：全章节、全收集、全变异、全区域、极高成功率、极低失败率'
+  },
+  {
+    id: EndingType.FORBIDDEN_PATH,
+    title: '禁忌之路',
+    subtitle: '以爱之名的献祭',
+    description: '你选择了一条不被理解的道路，使用了禁忌的力量来唤醒恋人。代价是巨大的，你失去了很多，但你从未后悔。有些爱，值得付出一切。',
+    rarity: EndingRarity.EPIC,
+    icon: '🖤',
+    color: 0x8800ff,
+    priority: 1,
+    conditions: [
+      { type: 'chapter_completed', targetCount: 5, description: '完成至少5章剧情', weight: 20 },
+      { type: 'collection_completion', targetCount: 80, description: '收集完成度达到80%', weight: 20 },
+      { type: 'mutation_discovered', targetCount: 5, description: '发现全部5种变异花瓣', weight: 25 },
+      { type: 'synthesis_path', target: 'recipe_11', description: '频繁使用变异合成路线', weight: 20 },
+      { type: 'failure_ratio', targetCount: 30, description: '合成失败率超过30%', weight: 15 }
+    ],
+    dialogues: [
+      { speaker: '恋人', text: '你...为我付出了太多。', expression: 'sad', delay: 1500 },
+      { speaker: '恋人', text: '我感受到了...禁忌的力量在你体内流淌。', expression: 'surprised', delay: 2000 },
+      { speaker: '恋人', text: '但我也感受到了，你的爱从未改变。', expression: 'happy', delay: 2000 },
+      { speaker: '恋人', text: '无论未来如何，我们一起面对。', expression: 'determined', delay: 2500 }
+    ],
+    animation: {
+      backgroundColor: 0x1a0a2e,
+      particleColors: [0x8800ff, 0xaa00ff, 0x440088, 0xff0066, 0x000000],
+      flashColor: { r: 136, g: 0, b: 255 },
+      flashDuration: 2000,
+      cameraShake: { duration: 600, intensity: 0.009 },
+      titleColor: '#8800ff',
+      subtitleColor: '#cc88ff',
+      glowColor: 0x8800ff,
+      petalDisplayScale: 1.4,
+      particleCount: 75,
+      particleSpeed: { min: 70, max: 230 },
+      specialEffect: 'phantom'
+    },
+    settlementBonus: {
+      scoreMultiplier: 1.6,
+      extraPoints: 600,
+      title: '禁忌行者',
+      description: '为爱踏足禁忌之地，总分×1.6并额外获得600分'
+    },
+    unlockHint: '高完成度、全变异发现、频繁使用变异路线、较高失败率'
+  }
+];
+
+export function getEndingConfig(endingId: EndingType): EndingConfig | undefined {
+  return ENDING_CONFIGS.find(c => c.id === endingId);
+}
+
+export function getInitialEndingAwakeningState(): EndingAwakeningState {
+  return {
+    triggeredEndingId: null,
+    triggeredAt: null,
+    unlockedEndings: [],
+    viewedEndings: [],
+    endingScores: {},
+    endingSettlementHistory: [],
+    synthesisPathTracking: {
+      recipeUsageCount: {},
+      dominantPath: null,
+      pathTimeline: []
+    },
+    chapterChoices: {},
+    totalEndingsDiscovered: 0
+  };
+}
+
+export const GALLERY_ITEMS: GalleryItem[] = [
+  ...BASE_GALLERY_ITEMS,
+  ...ENDING_CONFIGS.map(ending => ({
+    id: `ending_${ending.id}`,
+    category: GalleryCategory.ENDING,
+    name: ending.title,
+    description: ending.description,
+    icon: ending.icon,
+    color: ending.color,
+    unlockHint: ending.unlockHint,
+    data: { endingId: ending.id, rarity: ending.rarity }
+  }))
+];

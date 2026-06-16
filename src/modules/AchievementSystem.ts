@@ -5,7 +5,10 @@ import {
   AchievementState,
   PetalType,
   GalleryCategory,
-  GalleryItem
+  GalleryItem,
+  EndingType,
+  EndingRarity,
+  EndingSettlementData
 } from '../types';
 import {
   ACHIEVEMENT_CONFIGS,
@@ -48,6 +51,8 @@ export class AchievementSystem {
     this.addEventListener('playtime:update', (data: any) => this.handlePlaytimeUpdate(data));
     this.addEventListener('gallery:view', () => this.saveManager.markGalleryViewed());
     this.addEventListener('achievement:view', () => this.saveManager.markAllAchievementsViewed());
+    this.addEventListener('ending:unlocked', (data: any) => this.handleEndingUnlocked(data));
+    this.addEventListener('ending:triggered', (data: any) => this.handleEndingTriggered(data));
   }
 
   private addEventListener(event: string, callback: (data: any) => void): void {
@@ -147,6 +152,71 @@ export class AchievementSystem {
     this.saveManager.unlockAchievement('ach_game_complete');
   }
 
+  private handleEndingUnlocked(data: { endingId: EndingType; endingTitle: string }): void {
+    const state = this.saveManager.getGameState();
+    
+    this.updateAchievementsByCondition(
+      AchievementConditionType.ENDING_UNLOCKED,
+      state.endingAwakeningState?.unlockedEndings.length || 0,
+      data.endingId
+    );
+    
+    this.discoverEndingInGallery(data.endingId);
+    
+    const unlockedCount = state.endingAwakeningState?.unlockedEndings.length || 0;
+    if (unlockedCount >= 1) {
+      this.saveManager.unlockAchievement('ach_first_ending');
+    }
+    if (unlockedCount >= 4) {
+      this.saveManager.unlockAchievement('ach_half_endings');
+    }
+    if (unlockedCount >= 8) {
+      this.saveManager.unlockAchievement('ach_all_endings');
+    }
+  }
+
+  private handleEndingTriggered(data: { endingId: EndingType; settlementData: EndingSettlementData }): void {
+    const state = this.saveManager.getGameState();
+    
+    this.updateAchievementsByCondition(
+      AchievementConditionType.ENDING_VIEWED,
+      state.endingAwakeningState?.viewedEndings.length || 0,
+      data.endingId
+    );
+    
+    if (data.settlementData.endingRarity === EndingRarity.LEGENDARY) {
+      this.updateAchievementsByCondition(
+        AchievementConditionType.LEGENDARY_ENDING,
+        1,
+        data.endingId
+      );
+      
+      const legendaryEndings = [
+        EndingType.DAWN_AWAKENING,
+        EndingType.TRUE_LOVE,
+        EndingType.MIRACLE_REUNION
+      ];
+      const unlockedLegendary = legendaryEndings.filter(
+        e => state.endingAwakeningState?.viewedEndings.includes(e)
+      ).length;
+      
+      if (unlockedLegendary >= 1) {
+        this.saveManager.unlockAchievement('ach_legendary_ending');
+      }
+      if (unlockedLegendary >= 3) {
+        this.saveManager.unlockAchievement('ach_all_legendary_endings');
+      }
+    }
+    
+    if (data.endingId === EndingType.MIRACLE_REUNION) {
+      this.saveManager.unlockAchievement('ach_perfect_ending');
+    }
+    
+    if (data.endingId === EndingType.FORBIDDEN_PATH) {
+      this.saveManager.unlockAchievement('ach_forbidden_ending');
+    }
+  }
+
   private handleVisitorInteraction(): void {
     this.totalVisitorInteractions++;
     this.updateAchievementsByCondition(AchievementConditionType.VISITOR_INTERACTIONS, this.totalVisitorInteractions);
@@ -224,6 +294,38 @@ export class AchievementSystem {
     if (state.totalFailures >= 1) {
       this.saveManager.unlockAchievement('ach_hidden_first_failure');
     }
+    
+    const unlockedEndings = state.endingAwakeningState?.unlockedEndings || [];
+    if (unlockedEndings.length >= 1) {
+      this.saveManager.unlockAchievement('ach_first_ending');
+    }
+    if (unlockedEndings.length >= 4) {
+      this.saveManager.unlockAchievement('ach_half_endings');
+    }
+    if (unlockedEndings.length >= 8) {
+      this.saveManager.unlockAchievement('ach_all_endings');
+    }
+    
+    const viewedEndings = state.endingAwakeningState?.viewedEndings || [];
+    const legendaryEndings = [
+      EndingType.DAWN_AWAKENING,
+      EndingType.TRUE_LOVE,
+      EndingType.MIRACLE_REUNION
+    ];
+    const unlockedLegendary = legendaryEndings.filter(e => viewedEndings.includes(e)).length;
+    if (unlockedLegendary >= 1) {
+      this.saveManager.unlockAchievement('ach_legendary_ending');
+    }
+    if (unlockedLegendary >= 3) {
+      this.saveManager.unlockAchievement('ach_all_legendary_endings');
+    }
+    
+    if (viewedEndings.includes(EndingType.MIRACLE_REUNION)) {
+      this.saveManager.unlockAchievement('ach_perfect_ending');
+    }
+    if (viewedEndings.includes(EndingType.FORBIDDEN_PATH)) {
+      this.saveManager.unlockAchievement('ach_forbidden_ending');
+    }
   }
 
   private initializeGalleryFromExistingData(): void {
@@ -234,6 +336,7 @@ export class AchievementSystem {
     state.discoveredFailures.forEach(petalType => this.discoverPetalInGallery(petalType));
     state.unlockedRecipes.forEach(recipeId => this.discoverRecipeInGallery(recipeId));
     state.regionUnlockStates.filter(r => r.isUnlocked).forEach(r => this.discoverRegionInGallery(r.regionId));
+    state.endingAwakeningState?.unlockedEndings.forEach(endingId => this.discoverEndingInGallery(endingId));
   }
 
   private discoverPetalInGallery(petalType: PetalType): void {
@@ -259,6 +362,10 @@ export class AchievementSystem {
 
   private discoverRegionInGallery(regionId: string): void {
     this.saveManager.discoverGalleryItem(`region_${regionId}`, GalleryCategory.REGION);
+  }
+
+  private discoverEndingInGallery(endingId: EndingType): void {
+    this.saveManager.discoverGalleryItem(`ending_${endingId}`, GalleryCategory.ENDING);
   }
 
   public getAchievementsByCategory(category: string): { config: AchievementConfig; state: AchievementState | undefined }[] {

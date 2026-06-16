@@ -201,7 +201,11 @@ export enum AchievementConditionType {
   CHAPTER_COMPLETED = 'chapter_completed',
   SPECIAL_EVENT = 'special_event',
   NO_FAILURE_STREAK = 'no_failure_streak',
-  PERFECT_SYNTHESIS = 'perfect_synthesis'
+  PERFECT_SYNTHESIS = 'perfect_synthesis',
+  ENDING_UNLOCKED = 'ending_unlocked',
+  ENDING_VIEWED = 'ending_viewed',
+  ALL_ENDINGS = 'all_endings',
+  LEGENDARY_ENDING = 'legendary_ending'
 }
 
 export interface AchievementCondition {
@@ -253,7 +257,8 @@ export enum GalleryCategory {
   REGION = 'region',
   RECIPE = 'recipe',
   VISITOR = 'visitor',
-  CHAPTER = 'chapter'
+  CHAPTER = 'chapter',
+  ENDING = 'ending'
 }
 
 export interface GalleryItem {
@@ -481,6 +486,220 @@ export interface MarketConfig {
   rarityPriceMultipliers: Record<MarketRarity, number>;
 }
 
+export enum EndingType {
+  DAWN_AWAKENING = 'dawn_awakening',
+  MOONLIT_REUNION = 'moonlit_reunion',
+  ETERNAL_SLUMBER = 'eternal_slumber',
+  DREAM_ECHO = 'dream_echo',
+  FADING_LIGHT = 'fading_light',
+  TRUE_LOVE = 'true_love',
+  MIRACLE_REUNION = 'miracle_reunion',
+  FORBIDDEN_PATH = 'forbidden_path'
+}
+
+export enum EndingRarity {
+  LEGENDARY = 'legendary',
+  EPIC = 'epic',
+  RARE = 'rare',
+  UNCOMMON = 'uncommon',
+  COMMON = 'common'
+}
+
+export enum EndingConditionEvaluator {
+  SYNTHESIS_PATH = 'synthesis_path',
+  CHAPTER_PROGRESS = 'chapter_progress',
+  COLLECTION_COMPLETION = 'collection_completion',
+  MUTATION_DISCOVERY = 'mutation_discovery',
+  REGION_EXPLORATION = 'region_exploration',
+  VISITOR_AFFECTION = 'visitor_affection',
+  PLAY_STYLE = 'play_style',
+  TIME_FACTOR = 'time_factor'
+}
+
+export interface EndingCondition {
+  type: 'synthesis_path' | 'chapter_completed' | 'collection_completion' | 'mutation_discovered' | 'visitor_affection' | 'synthesis_success_rate' | 'failure_ratio' | 'region_explored';
+  evaluator?: EndingConditionEvaluator;
+  target?: string;
+  targetCount?: number;
+  comparator?: 'gte' | 'lte' | 'eq' | 'gt' | 'lt';
+  description: string;
+  weight: number;
+}
+
+export interface EndingConditionResult {
+  condition: EndingCondition;
+  met: boolean;
+  actualValue: number;
+  progress: number;
+}
+
+export interface EndingDialogue {
+  id: string;
+  speaker: string;
+  speakerIcon?: string;
+  text: string;
+  expression?: 'happy' | 'sad' | 'surprised' | 'serene' | 'determined' | 'melancholy';
+  delay?: number;
+}
+
+export interface EndingReward {
+  type: 'achievement' | 'inheritance_points' | 'gallery_unlock' | 'exclusive_title';
+  id?: string;
+  value?: number;
+  description: string;
+}
+
+export interface EndingDialogueLine {
+  speaker: string;
+  text: string;
+  expression?: 'happy' | 'sad' | 'surprised' | 'serene' | 'determined' | 'melancholy';
+  delay?: number;
+}
+
+export interface EndingAnimationConfig {
+  backgroundColor: number;
+  particleColors: number[];
+  flashColor: { r: number; g: number; b: number };
+  flashDuration: number;
+  cameraShake: { duration: number; intensity: number };
+  titleColor: string;
+  subtitleColor: string;
+  glowColor: number;
+  petalDisplayScale: number;
+  particleCount: number;
+  particleSpeed: { min: number; max: number };
+  specialEffect: 'radiance' | 'moonbeam' | 'frost' | 'phantom' | 'ember';
+}
+
+export interface EndingConfig {
+  id: EndingType;
+  title: string;
+  subtitle: string;
+  description: string;
+  rarity: EndingRarity;
+  icon: string;
+  color: number;
+  conditions: EndingCondition[];
+  priority: number;
+  dialogues: EndingDialogueLine[];
+  animation: EndingAnimationConfig;
+  settlementBonus: {
+    scoreMultiplier: number;
+    extraPoints: number;
+    title: string;
+    description: string;
+  };
+  unlockHint: string;
+}
+
+export interface EndingEvaluationResult {
+  endingId: EndingType;
+  endingTitle: string;
+  matchedConditions: EndingCondition[];
+  totalWeight: number;
+  evaluationScores: Record<EndingType, number>;
+}
+
+export interface EndingSettlementData {
+  endingId: EndingType;
+  endingTitle: string;
+  endingSubtitle: string;
+  endingDescription: string;
+  endingRarity: EndingRarity;
+  endingIcon: string;
+  endingColor: number;
+  animation: EndingAnimationConfig;
+  dialogues: EndingDialogueLine[];
+  evaluationResult: EndingEvaluationResult;
+  finalScore: number;
+  baseScore: number;
+  bonusScore: number;
+  settlementBonus: EndingConfig['settlementBonus'];
+  conditionScore: number;
+  maxConditionScore: number;
+  metConditions: {
+    description: string;
+    actualValue: number;
+    targetValue: number;
+    weight: number;
+  }[];
+  partialConditions: {
+    description: string;
+    actualValue: number;
+    targetValue: number;
+    progress: number;
+    weight: number;
+  }[];
+  missedConditions: {
+    description: string;
+    actualValue: number;
+    targetValue: number;
+    weight: number;
+  }[];
+  synthesisPathAnalysis: {
+    recipesUsed: string[];
+    mostUsedRecipe: string | null;
+    totalNormalSynthesis: number;
+    totalMutationSynthesis: number;
+    totalFailures: number;
+    mutationRate: number;
+    successRate: number;
+    preferredPath: string;
+  };
+  chapterAnalysis: {
+    completedCount: number;
+    totalCount: number;
+    averageRating: 'S' | 'A' | 'B' | 'C' | null;
+    totalStoryScore: number;
+    keyChoices: string[];
+  };
+  collectionAnalysis: {
+    totalPetalTypes: number;
+    unlockedPetalTypes: number;
+    normalCompletion: number;
+    mutationCompletion: number;
+    overallCompletion: number;
+    rareDropsFound: number;
+  };
+  explorationAnalysis: {
+    regionsUnlocked: number;
+    totalRegions: number;
+    mostVisitedRegion: string | null;
+    totalTimeSpent: number;
+  };
+  playStyleAnalysis: {
+    playTime: number;
+    petalPerMinute: number;
+    synthesisPerMinute: number;
+    efficiencyRating: 'S' | 'A' | 'B' | 'C' | 'D';
+    preferredTimeOfDay: TimeOfDay | null;
+    preferredWeather: WeatherType | null;
+  };
+  rewards: EndingReward[];
+  epilogueText: string;
+  timestamp: number;
+}
+
+export interface EndingAwakeningState {
+  triggeredEndingId: EndingType | null;
+  triggeredAt: number | null;
+  unlockedEndings: EndingType[];
+  viewedEndings: EndingType[];
+  endingScores: Record<string, string | number>;
+  endingSettlementHistory: {
+    endingId: EndingType;
+    timestamp: number;
+    score: number;
+  }[];
+  synthesisPathTracking: {
+    recipeUsageCount: Record<string, number>;
+    dominantPath: string | null;
+    pathTimeline: { recipeId: string; timestamp: number }[];
+  };
+  chapterChoices: Record<string, string>;
+  totalEndingsDiscovered: number;
+}
+
 export interface GameState {
   playerX: number;
   playerY: number;
@@ -523,6 +742,7 @@ export interface GameState {
   galleryProgress: GalleryProgress;
   forestCrisisState: ForestCrisisSystemState;
   marketState: MarketState;
+  endingAwakeningState: EndingAwakeningState;
 }
 
 export interface AudioContextPreferences {
@@ -1509,4 +1729,12 @@ export interface GameEvents {
   'market:level_up': { oldLevel: number; newLevel: number };
   'market:daily_limit_reached': {};
   'market:hot_item_appeared': { itemId: string; petalType: PetalType };
+  'ending:determined': { endingId: string; endingConfig: EndingConfig; settlementData: EndingSettlementData };
+  'ending:animation_start': { endingId: string; animation: EndingAnimationConfig };
+  'ending:animation_complete': { endingId: string };
+  'ending:unlocked': { endingId: EndingType; endingTitle: string };
+  'ending:evaluated': { endingId: EndingType; endingTitle: string; scores: Record<EndingType, number> };
+  'ending:triggered': { endingId: EndingType; settlementData: EndingSettlementData };
+  'ending:dialogue_start': { endingId: EndingType; dialogue: EndingDialogueLine };
+  'ending:dialogue_end': { endingId: EndingType };
 }

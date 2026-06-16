@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { PetalType, SynthesisRecipe, SynthesisResultType, SynthesisResultData, MutationOutcome, FailOutcome, AudioContextType } from '../types';
+import { PetalType, SynthesisRecipe, SynthesisResultType, SynthesisResultData, MutationOutcome, FailOutcome, AudioContextType, EndingSettlementData } from '../types';
 import { SYNTHESIS_RECIPES, PETAL_CONFIGS } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { EventManager } from '../managers/EventManager';
 import { AudioManager } from '../managers/AudioManager';
+import { EndingAwakeningSystem } from './EndingAwakeningSystem';
 
 export class SynthesisSystem {
   private scene: Phaser.Scene;
@@ -620,7 +621,7 @@ export class SynthesisSystem {
 
   private triggerWakeUpSequence(): void {
     const state = SaveManager.getInstance().getGameState();
-    
+
     AudioManager.getInstance().switchContext(AudioContextType.COMPLETE);
 
     EventManager.getInstance().emit('game:complete', {
@@ -628,11 +629,24 @@ export class SynthesisSystem {
       totalCollected: state.totalCollected
     });
 
-    this.scene.cameras.main.fadeOut(2000, 255, 255, 255);
-    
-    this.scene.time.delayedCall(2500, () => {
-      this.scene.scene.start('Result');
-    });
+    const endingSystem = (this.scene as any).endingAwakeningSystem as EndingAwakeningSystem | undefined;
+
+    if (endingSystem) {
+      endingSystem.onWakeUpTriggered();
+      const settlementData = endingSystem.generateSettlementData();
+
+      this.scene.cameras.main.fadeOut(2000, 255, 255, 255);
+
+      this.scene.time.delayedCall(2500, () => {
+        this.scene.scene.start('Result', { endingSettlementData: settlementData });
+      });
+    } else {
+      this.scene.cameras.main.fadeOut(2000, 255, 255, 255);
+
+      this.scene.time.delayedCall(2500, () => {
+        this.scene.scene.start('Result');
+      });
+    }
   }
 
   public getRecipeById(recipeId: string): SynthesisRecipe | undefined {

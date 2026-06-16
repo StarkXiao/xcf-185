@@ -2,20 +2,21 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, PETAL_CONFIGS, EFFICIENCY_RATING, RARITY_CONFIG, VISITOR_SPRITE_CONFIGS, getChapterConfig } from '../config/GameConfig';
 import { SaveManager } from '../managers/SaveManager';
 import { AudioManager } from '../managers/AudioManager';
-import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType, AffectionLevel, VisitorSpriteId, ChapterStatus, ChapterReviewData } from '../types';
+import { PetalType, InheritanceOption, InheritanceType, ReviewData, AudioContextType, AffectionLevel, VisitorSpriteId, ChapterStatus, ChapterReviewData, EndingSettlementData, EndingType, EndingRarity } from '../types';
 
 export class ResultScene extends Phaser.Scene {
   private particles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private reviewData!: ReviewData;
   private currentPanelIndex: number = 0;
-  private totalPanels: number = 7;
+  private totalPanels: number = 8;
   private scrollContainer!: Phaser.GameObjects.Container;
   private inheritanceOptions: InheritanceOption[] = [];
   private inheritanceUIRefs: Map<number, { cardBg: Phaser.GameObjects.Graphics; costText: Phaser.GameObjects.Text; costBg: Phaser.GameObjects.Graphics }> = new Map();
   private availablePoints: number = 0;
   private selectedInheritance: InheritanceType[] = [];
   private chapterReviewData: ChapterReviewData[] = [];
-  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '访客精灵', '章节回顾', '继承策略'];
+  private panelTitles: string[] = ['本局统计', '效率分析', '关键节点', '稀有产出', '访客精灵', '章节回顾', '结局分析', '继承策略'];
+  private endingSettlementData: EndingSettlementData | null = null;
 
   constructor() {
     super('Result');
@@ -30,6 +31,11 @@ export class ResultScene extends Phaser.Scene {
     this.inheritanceOptions = this.reviewData.inheritanceOptions;
     this.availablePoints = SaveManager.getInstance().calculateAvailablePoints();
     this.chapterReviewData = this.getChapterReviewData();
+
+    const sceneData = this.scene.settings.data as { endingSettlementData?: EndingSettlementData } | undefined;
+    if (sceneData?.endingSettlementData) {
+      this.endingSettlementData = sceneData.endingSettlementData;
+    }
 
     this.createBackground();
     this.createWakeUpAnimation();
@@ -90,6 +96,16 @@ export class ResultScene extends Phaser.Scene {
     const centerX = GAME_WIDTH / 2;
     const centerY = GAME_HEIGHT * 0.25;
 
+    const endingData = this.endingSettlementData;
+    const titleText = endingData ? endingData.endingTitle : '恋人已苏醒';
+    const subtitleText = endingData ? endingData.endingSubtitle : '在梦境森林中，你们终于重逢';
+    const titleColor = endingData ? endingData.animation.titleColor : '#ffffff';
+    const subtitleColor = endingData ? endingData.animation.subtitleColor : '#a8e6cf';
+    const glowColor = endingData ? endingData.endingColor : 0xff6b9d;
+    const particleTints = endingData ? endingData.animation.particleColors : [0xffffff, 0xff6b9d, 0xa8e6cf, 0xffd93d];
+    const petalScale = endingData ? endingData.animation.petalDisplayScale : 1;
+    const particleCount = endingData ? endingData.animation.particleCount : 5;
+
     const wakeupPetal = this.add.image(centerX, centerY, `petal_${PetalType.WAKEUP}`)
       .setDisplaySize(120, 120)
       .setBlendMode(Phaser.BlendModes.ADD)
@@ -99,7 +115,7 @@ export class ResultScene extends Phaser.Scene {
     this.tweens.add({
       targets: wakeupPetal,
       alpha: 1,
-      scale: 1,
+      scale: petalScale,
       duration: 1500,
       delay: 500,
       ease: 'Elastic.Out'
@@ -119,26 +135,36 @@ export class ResultScene extends Phaser.Scene {
       angle: { min: 0, max: 360 },
       scale: { start: 0, end: 4 },
       alpha: { start: 1, end: 0 },
-      quantity: 5,
+      quantity: particleCount,
       frequency: 100,
       blendMode: 'ADD',
-      tint: [0xffffff, 0xff6b9d, 0xa8e6cf, 0xffd93d],
+      tint: particleTints,
       delay: 1000
     });
 
-    this.cameras.main.flash(1000, 255, 255, 255);
+    if (endingData) {
+      const fc = endingData.animation.flashColor;
+      this.cameras.main.flash(endingData.animation.flashDuration, fc.r, fc.g, fc.b);
+      if (endingData.animation.cameraShake.duration > 0) {
+        this.time.delayedCall(500, () => {
+          this.cameras.main.shake(endingData.animation.cameraShake.duration, endingData.animation.cameraShake.intensity);
+        });
+      }
+    } else {
+      this.cameras.main.flash(1000, 255, 255, 255);
+    }
 
-    const title = this.add.text(centerX, centerY + 80, '恋人已苏醒', {
+    const title = this.add.text(centerX, centerY + 80, titleText, {
       fontFamily: 'Arial',
       fontSize: '42px',
       color: '#ffffff',
       fontStyle: 'bold'
     }).setOrigin(0.5).setAlpha(0);
 
-    const titleGlow = this.add.text(centerX, centerY + 80, '恋人已苏醒', {
+    const titleGlow = this.add.text(centerX, centerY + 80, titleText, {
       fontFamily: 'Arial',
       fontSize: '42px',
-      color: '#ff6b9d',
+      color: titleColor.replace('#', '').length === 6 ? titleColor : '#ff6b9d',
       fontStyle: 'bold'
     }).setOrigin(0.5).setAlpha(0).setBlendMode(Phaser.BlendModes.ADD);
 
@@ -150,10 +176,10 @@ export class ResultScene extends Phaser.Scene {
       ease: 'Cubic.Out'
     });
 
-    const subtitle = this.add.text(centerX, centerY + 130, '在梦境森林中，你们终于重逢', {
+    const subtitle = this.add.text(centerX, centerY + 130, subtitleText, {
       fontFamily: 'Arial',
       fontSize: '18px',
-      color: '#a8e6cf',
+      color: subtitleColor,
       align: 'center'
     }).setOrigin(0.5).setAlpha(0);
 
@@ -165,22 +191,64 @@ export class ResultScene extends Phaser.Scene {
       ease: 'Cubic.Out'
     });
 
-    const scoreText = this.add.text(centerX, centerY + 170, `总分: ${this.reviewData.totalScore}`, {
-      fontFamily: 'Arial',
-      fontSize: '24px',
-      color: '#ffd700',
-      fontStyle: 'bold'
-    }).setOrigin(0.5).setAlpha(0);
+    if (endingData) {
+      const rarityLabels: Record<EndingRarity, { text: string; color: string }> = {
+        [EndingRarity.LEGENDARY]: { text: '✦ 传说结局 ✦', color: '#ffd700' },
+        [EndingRarity.EPIC]: { text: '◆ 史诗结局 ◆', color: '#ff9ecb' },
+        [EndingRarity.RARE]: { text: '◇ 稀有结局 ◇', color: '#88ccff' },
+        [EndingRarity.UNCOMMON]: { text: '○ 罕见结局 ○', color: '#a8e6cf' },
+        [EndingRarity.COMMON]: { text: '· 普通结局 ·', color: '#888888' }
+      };
 
-    this.tweens.add({
-      targets: scoreText,
-      alpha: 1,
-      duration: 1000,
-      delay: 3000,
-      ease: 'Cubic.Out'
-    });
+      const rarityInfo = rarityLabels[endingData.endingRarity];
+      const rarityText = this.add.text(centerX, centerY + 165, rarityInfo.text, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: rarityInfo.color,
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setAlpha(0);
 
-    this.time.delayedCall(3500, () => {
+      this.tweens.add({
+        targets: rarityText,
+        alpha: 1,
+        duration: 1000,
+        delay: 3000,
+        ease: 'Cubic.Out'
+      });
+
+      const endingScoreText = this.add.text(centerX, centerY + 200,
+        `结局得分: ${endingData.finalScore}  (${endingData.settlementBonus.title})`, {
+        fontFamily: 'Arial',
+        fontSize: '14px',
+        color: '#ffd700'
+      }).setOrigin(0.5).setAlpha(0);
+
+      this.tweens.add({
+        targets: endingScoreText,
+        alpha: 1,
+        duration: 1000,
+        delay: 3500,
+        ease: 'Cubic.Out'
+      });
+    } else {
+      const scoreText = this.add.text(centerX, centerY + 170, `总分: ${this.reviewData.totalScore}`, {
+        fontFamily: 'Arial',
+        fontSize: '24px',
+        color: '#ffd700',
+        fontStyle: 'bold'
+      }).setOrigin(0.5).setAlpha(0);
+
+      this.tweens.add({
+        targets: scoreText,
+        alpha: 1,
+        duration: 1000,
+        delay: 3000,
+        ease: 'Cubic.Out'
+      });
+    }
+
+    const panelDelay = endingData ? 4500 : 3500;
+    this.time.delayedCall(panelDelay, () => {
       this.createReviewPanels();
     });
   }
@@ -199,7 +267,8 @@ export class ResultScene extends Phaser.Scene {
     this.createRareDropsPanel(3);
     this.createVisitorSpritePanel(4);
     this.createChapterReviewPanel(5);
-    this.createInheritancePanel(6);
+    this.createEndingAnalysisPanel(6);
+    this.createInheritancePanel(7);
 
     this.tweens.add({
       targets: this.scrollContainer,
@@ -1000,6 +1069,246 @@ export class ResultScene extends Phaser.Scene {
           contentY = pointer.y - startY;
           contentY = Math.max(-maxScroll, Math.min(0, contentY));
           content.y = contentY;
+        }
+      });
+
+      scrollBg.on('pointerup', () => { isDragging = false; });
+      scrollBg.on('pointerout', () => { isDragging = false; });
+
+      this.scrollContainer.add(scrollBg);
+    }
+
+    this.scrollContainer.add([container, mask]);
+  }
+
+  private createEndingAnalysisPanel(panelIndex: number): void {
+    const panelX = panelIndex * GAME_WIDTH;
+    const panelY = 0;
+    const panelWidth = GAME_WIDTH - 60;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x0a0514, 0.9);
+    panelBg.fillRoundedRect(30, panelY, panelWidth, 420, 20);
+    panelBg.lineStyle(3, 0xffd700, 0.5);
+    panelBg.strokeRoundedRect(30, panelY, panelWidth, 420, 20);
+
+    const panelTitle = this.add.text(GAME_WIDTH / 2, panelY + 35, '结局分析', {
+      fontFamily: 'Arial',
+      fontSize: '24px',
+      color: '#ffffff',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.scrollContainer.add([panelBg, panelTitle]);
+
+    const endingData = this.endingSettlementData;
+    if (!endingData) {
+      const noDataText = this.add.text(GAME_WIDTH / 2, panelY + 230, '暂无结局数据', {
+        fontFamily: 'Arial',
+        fontSize: '18px',
+        color: '#666666'
+      }).setOrigin(0.5);
+      this.scrollContainer.add(noDataText);
+      return;
+    }
+
+    const container = this.add.container(0, 0);
+    const mask = this.add.graphics();
+    mask.fillRect(30, panelY + 60, panelWidth, 350);
+    container.setMask(mask.createGeometryMask());
+
+    const content = this.add.container(0, 0);
+    container.add(content);
+
+    let contentY = panelY + 70;
+    const sectionSpacing = 15;
+    const rowHeight = 28;
+
+    const addSectionHeader = (text: string, color: string) => {
+      const header = this.add.text(50, contentY, text, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: color,
+        fontStyle: 'bold'
+      }).setOrigin(0, 0.5);
+      content.add(header);
+      contentY += rowHeight;
+    };
+
+    const addStatRow = (label: string, value: string, color: string = '#ffffff') => {
+      const labelText = this.add.text(60, contentY, label, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const valueText = this.add.text(GAME_WIDTH - 60, contentY, value, {
+        fontFamily: 'Arial',
+        fontSize: '13px',
+        color: color,
+        fontStyle: 'bold'
+      }).setOrigin(1, 0.5);
+
+      content.add([labelText, valueText]);
+      contentY += rowHeight;
+    };
+
+    const addProgressBar = (label: string, current: number, total: number, color: number) => {
+      const labelText = this.add.text(60, contentY, label, {
+        fontFamily: 'Arial',
+        fontSize: '12px',
+        color: '#888888'
+      }).setOrigin(0, 0.5);
+
+      const barWidth = 150;
+      const barHeight = 8;
+      const barX = GAME_WIDTH - 60 - barWidth;
+      const progress = total > 0 ? current / total : 0;
+
+      const barBg = this.add.graphics();
+      barBg.fillStyle(0x333333, 0.5);
+      barBg.fillRoundedRect(barX, contentY - 4, barWidth, barHeight, 4);
+
+      const barFill = this.add.graphics();
+      barFill.fillStyle(color, 0.8);
+      barFill.fillRoundedRect(barX, contentY - 4, barWidth * progress, barHeight, 4);
+
+      const percentText = this.add.text(barX - 10, contentY, `${Math.round(progress * 100)}%`, {
+        fontFamily: 'Arial',
+        fontSize: '11px',
+        color: '#aaaaaa'
+      }).setOrigin(1, 0.5);
+
+      content.add([labelText, barBg, barFill, percentText]);
+      contentY += rowHeight;
+    };
+
+    addSectionHeader('🎯 条件达成分析', '#ffd700');
+    addStatRow('条件得分', `${endingData.conditionScore} / ${endingData.maxConditionScore}`, '#ffd700');
+    addStatRow('已满足条件', `${endingData.metConditions.length} 项`, '#a8e6cf');
+    if (endingData.partialConditions.length > 0) {
+      addStatRow('部分满足', `${endingData.partialConditions.length} 项`, '#ffaa00');
+    }
+    if (endingData.missedConditions.length > 0) {
+      addStatRow('未满足条件', `${endingData.missedConditions.length} 项`, '#ff8888');
+    }
+
+    endingData.metConditions.forEach(cond => {
+      const progress = cond.targetValue > 0 ? Math.min(100, Math.round((cond.actualValue / cond.targetValue) * 100)) : 100;
+      addStatRow(`  ✓ ${cond.description}`, `${cond.actualValue}/${cond.targetValue} (${progress}%)`, '#a8e6cf');
+    });
+
+    endingData.partialConditions.forEach(cond => {
+      addStatRow(`  ~ ${cond.description}`, `${cond.actualValue}/${cond.targetValue} (${cond.progress}%)`, '#ffaa00');
+    });
+
+    endingData.missedConditions.forEach(cond => {
+      addStatRow(`  ✗ ${cond.description}`, `${cond.actualValue}/${cond.targetValue} (0%)`, '#ff8888');
+    });
+
+    contentY += sectionSpacing;
+    addSectionHeader('⚗️ 合成路径分析', '#ff6b9d');
+    addStatRow('使用配方数', `${endingData.synthesisPathAnalysis.recipesUsed.length} 种`, '#ff6b9d');
+    if (endingData.synthesisPathAnalysis.mostUsedRecipe) {
+      addStatRow('最常用配方', endingData.synthesisPathAnalysis.mostUsedRecipe, '#ff6b9d');
+    }
+    addStatRow('普通合成', `${endingData.synthesisPathAnalysis.totalNormalSynthesis} 次`, '#88ccff');
+    addStatRow('变异合成', `${endingData.synthesisPathAnalysis.totalMutationSynthesis} 次`, '#c8a2ff');
+    addStatRow('合成失败', `${endingData.synthesisPathAnalysis.totalFailures} 次`, '#ff8888');
+    addProgressBar('合成成功率', endingData.synthesisPathAnalysis.successRate, 100, 0xa8e6cf);
+    addProgressBar('变异触发率', endingData.synthesisPathAnalysis.mutationRate, 100, 0xc8a2ff);
+    addStatRow('偏好合成路线', endingData.synthesisPathAnalysis.preferredPath, '#ff6b9d');
+
+    contentY += sectionSpacing;
+    addSectionHeader('📖 章节分析', '#88ccff');
+    addProgressBar('章节完成度', endingData.chapterAnalysis.completedCount, endingData.chapterAnalysis.totalCount, 0x88ccff);
+    if (endingData.chapterAnalysis.averageRating) {
+      const ratingColors: Record<string, string> = { 'S': '#ffd700', 'A': '#ff6b9d', 'B': '#88ccff', 'C': '#a8e6cf' };
+      addStatRow('平均评级', endingData.chapterAnalysis.averageRating, ratingColors[endingData.chapterAnalysis.averageRating] || '#ffffff');
+    }
+    addStatRow('总剧情得分', `${endingData.chapterAnalysis.totalStoryScore} 分`, '#ffd700');
+    if (endingData.chapterAnalysis.keyChoices.length > 0) {
+      addStatRow('关键章节选择', endingData.chapterAnalysis.keyChoices.join(', '), '#88ccff');
+    }
+
+    contentY += sectionSpacing;
+    addSectionHeader('🌸 收集进度分析', '#ffe66d');
+    addProgressBar('总收集完成度', endingData.collectionAnalysis.overallCompletion, 100, 0xffe66d);
+    addProgressBar('普通花瓣收集', endingData.collectionAnalysis.normalCompletion, 100, 0xa8e6cf);
+    addProgressBar('变异花瓣收集', endingData.collectionAnalysis.mutationCompletion, 100, 0xc8a2ff);
+    addStatRow('解锁花瓣种类', `${endingData.collectionAnalysis.unlockedPetalTypes} / ${endingData.collectionAnalysis.totalPetalTypes}`, '#ffe66d');
+    addStatRow('稀有掉落发现', `${endingData.collectionAnalysis.rareDropsFound} 次`, '#ffd700');
+
+    contentY += sectionSpacing;
+    addSectionHeader('🗺️ 探索分析', '#a8e6cf');
+    addProgressBar('区域解锁进度', endingData.explorationAnalysis.regionsUnlocked, endingData.explorationAnalysis.totalRegions, 0xa8e6cf);
+    if (endingData.explorationAnalysis.mostVisitedRegion) {
+      addStatRow('最常探索区域', endingData.explorationAnalysis.mostVisitedRegion, '#a8e6cf');
+    }
+    const formatTime = (seconds: number): string => {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins}分${secs}秒`;
+    };
+    addStatRow('总探索时间', formatTime(endingData.explorationAnalysis.totalTimeSpent), '#a8e6cf');
+
+    contentY += sectionSpacing;
+    addSectionHeader('🎮 游玩风格分析', '#c8a2ff');
+    addStatRow('游戏时长', formatTime(endingData.playStyleAnalysis.playTime), '#c8a2ff');
+    addStatRow('收集效率', `${endingData.playStyleAnalysis.petalPerMinute} 朵/分钟`, '#ffe66d');
+    addStatRow('合成效率', `${endingData.playStyleAnalysis.synthesisPerMinute} 次/分钟`, '#ff6b9d');
+    const efficiencyColors: Record<string, string> = { 'S': '#ffd700', 'A': '#ff6b9d', 'B': '#88ccff', 'C': '#a8e6cf', 'D': '#888888' };
+    addStatRow('综合效率评级', endingData.playStyleAnalysis.efficiencyRating, efficiencyColors[endingData.playStyleAnalysis.efficiencyRating] || '#ffffff');
+    if (endingData.playStyleAnalysis.preferredTimeOfDay) {
+      const timeLabels: Record<string, string> = { 'dawn': '黎明', 'day': '白天', 'dusk': '黄昏', 'night': '夜晚', 'midnight': '午夜' };
+      addStatRow('偏好时间段', timeLabels[endingData.playStyleAnalysis.preferredTimeOfDay] || endingData.playStyleAnalysis.preferredTimeOfDay, '#c8a2ff');
+    }
+    if (endingData.playStyleAnalysis.preferredWeather) {
+      const weatherLabels: Record<string, string> = { 'sunny': '晴天', 'cloudy': '多云', 'rainy': '雨天', 'snowy': '雪天', 'stormy': '暴风雨', 'foggy': '雾天' };
+      addStatRow('偏好天气', weatherLabels[endingData.playStyleAnalysis.preferredWeather] || endingData.playStyleAnalysis.preferredWeather, '#c8a2ff');
+    }
+
+    contentY += sectionSpacing;
+    addSectionHeader('🎁 获得奖励', '#ffd700');
+    endingData.rewards.forEach((reward, index) => {
+      const rewardIcons: Record<string, string> = { 'achievement': '🏆', 'inheritance_points': '⭐', 'gallery_unlock': '🖼️', 'exclusive_title': '👑' };
+      const icon = rewardIcons[reward.type] || '🎁';
+      const rewardText = reward.value ? `${reward.description} (+${reward.value})` : reward.description;
+      addStatRow(`  ${icon}`, rewardText, '#ffd700');
+    });
+
+    contentY += sectionSpacing;
+    addSectionHeader('📜 结局尾声', '#ffccdd');
+    const epilogueText = this.add.text(60, contentY, endingData.epilogueText, {
+      fontFamily: 'Arial',
+      fontSize: '13px',
+      color: '#ffccdd',
+      wordWrap: { width: panelWidth - 80 },
+      align: 'left'
+    }).setOrigin(0, 0);
+    content.add(epilogueText);
+    contentY += epilogueText.height + 10;
+
+    const totalContentHeight = contentY - panelY - 70;
+    if (totalContentHeight > 350) {
+      let isDragging = false;
+      let startY = 0;
+      let contentOffsetY = 0;
+      const maxScroll = Math.max(0, totalContentHeight - 350);
+
+      const scrollBg = this.add.zone(GAME_WIDTH / 2, panelY + 235, panelWidth, 350);
+      scrollBg.setInteractive();
+
+      scrollBg.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        isDragging = true;
+        startY = pointer.y - contentOffsetY;
+      });
+
+      scrollBg.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+        if (isDragging) {
+          contentOffsetY = pointer.y - startY;
+          contentOffsetY = Math.max(-maxScroll, Math.min(0, contentOffsetY));
+          content.y = contentOffsetY;
         }
       });
 
